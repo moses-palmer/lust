@@ -1,0 +1,142 @@
+//! # Script expressions.
+//!
+//! This module provides means to convert an abstract syntax tree into an executable form.
+
+use std::convert::Infallible;
+
+use thiserror::Error;
+
+use crate::{Value, ast, common::write_list, val};
+
+pub mod cmd;
+pub mod env;
+pub mod linked;
+
+/// An error occurring when evaluating an expression.
+#[derive(Debug, Error, PartialEq)]
+pub enum Error<'a> {
+    #[error("syntax error: {message}")]
+    Syntax { message: &'static str },
+
+    #[error("evaluation of {node} failed: {message}")]
+    Eval {
+        node: &'a ast::Node,
+        message: &'static str,
+    },
+
+    #[error("unknown reference: {value}")]
+    UnknownReference { value: String },
+
+    #[error("invalid operation: {0}")]
+    InvalidOperation(#[from] val::Error),
+
+    #[error("invalid invocation: expected {expected} arguments, found {actual}")]
+    InvalidInvocation { expected: usize, actual: usize },
+}
+
+impl From<Infallible> for Error<'_> {
+    fn from(_value: Infallible) -> Self {
+        unreachable!()
+    }
+}
+
+/// The result of evaluating an expression.
+pub type Result<'a, C> = ::std::result::Result<Value<'a, <C as cmd::Command>::Tag>, Error<'a>>;
+
+/// An expression.
+///
+/// Once linked, an expression can be evaluated.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub enum Expression<C> {
+    /// A list of expressions.
+    List(Vec<Self>),
+
+    /// A quoted AST node.
+    AST(ast::Node),
+
+    /// A variable reference.
+    Reference(String),
+
+    /// A boolean value.
+    Boolean(bool),
+
+    /// A number.
+    Number(f32),
+
+    /// A string.
+    String(String),
+
+    /// A built-in command.
+    Command(C),
+}
+
+impl<C> Expression<C>
+where
+    C: cmd::Command,
+{
+    /// Links this expression so that it can be run.
+    pub fn link(self) -> linked::Script<C> {
+        self.into()
+    }
+}
+
+impl<C> Default for Expression<C> {
+    fn default() -> Self {
+        Expression::List(Vec::new())
+    }
+}
+
+impl<C> ::std::fmt::Display for Expression<C>
+where
+    C: ::std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Expression::*;
+        match self {
+            List(v) => write_list(v.iter(), f),
+            AST(v) => write!(f, "{v}"),
+            Reference(v) => write!(f, "{v}"),
+            Boolean(v) => write!(f, "{v}"),
+            Number(v) => write!(f, "{v}"),
+            String(v) => write!(f, "{v}"),
+            Command(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl<'a, C> TryFrom<&'a ast::Node> for Expression<C>
+where
+    C: cmd::Command,
+{
+    type Error = Error<'a>;
+
+    fn try_from(value: &'a ast::Node) -> ::std::result::Result<Self, Self::Error> {
+        use ast::NodeValue::*;
+        if value.quoted() {
+            Ok(Expression::AST(value.clone()))
+        } else {
+            match value.value() {
+                Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::TRUE => {
+                    Ok(Expression::Boolean(true))
+                }
+                Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::FALSE => {
+                    Ok(Expression::Boolean(false))
+                }
+                Leaf(ast::Value::Atom { value }) => Ok(Expression::Reference(value.clone())),
+                Leaf(ast::Value::Number { value }) => Ok(Expression::Number(*value)),
+                Leaf(ast::Value::String { value }) => Ok(Expression::String(value.clone())),
+                Tree(v) => {
+                    if v.len() > 0 {
+                        C::parse(value)
+                    } else {
+                        Err(Error::Eval {
+                            node: value,
+                            message: "unexpected empty node",
+                        })?
+                    }
+                }
+            }
+        }
+    }
+}
