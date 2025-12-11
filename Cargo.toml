@@ -1,0 +1,13 @@
+[package]
+name = "lust"
+version = "0.0.0"
+authors = ["Moses Palmér <mosespalmer@gmail.com>"]
+edition = "2024"
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+thiserror = "2"
+
+[features]
+default = ["serde"]
+doc = []
