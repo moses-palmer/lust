@@ -6,7 +6,7 @@ impl crate::val::Tag for Tag {}
 
 struct Context;
 
-commands! {
+commands_all! {
     /// # Scripting language reference
     pub enum ScriptReference<
         Tag = Tag,

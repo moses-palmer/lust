@@ -79,6 +79,60 @@ where
     pub fn link(self) -> linked::Script<C> {
         self.into()
     }
+
+    /// Calls a function for this and each sub-expression.
+    ///
+    /// # Argument
+    /// *  `f` - The callback.
+    pub fn for_each<F>(&self, mut f: F)
+    where
+        F: FnMut(&Self),
+    {
+        fn visit<C, F>(e: &Expression<C>, f: &mut F)
+        where
+            C: cmd::Command,
+            F: FnMut(&Expression<C>),
+        {
+            f(e);
+            match e {
+                Expression::Command(c) => {
+                    for e in c.arguments() {
+                        visit(e, f);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        visit(self, &mut f);
+    }
+
+    /// Calls a function for this and each sub-expression.
+    ///
+    /// # Argument
+    /// *  `f` - The callback.
+    pub fn for_each_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut Self),
+    {
+        fn visit<C, F>(e: &mut Expression<C>, f: &mut F)
+        where
+            C: cmd::Command,
+            F: FnMut(&mut Expression<C>),
+        {
+            f(e);
+            match e {
+                Expression::Command(c) => {
+                    for e in c.arguments_mut() {
+                        visit(e, f);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        visit(self, &mut f);
+    }
 }
 
 impl<C> Default for Expression<C> {

@@ -50,6 +50,17 @@ where
             Command(v) => v.evaluate(self, ctx, env),
         }
     }
+
+    /// Calls a function for this and each sub-expression.
+    ///
+    /// # Argument
+    /// *  `f` - The callback.
+    pub fn for_each<F>(&self, f: F)
+    where
+        F: FnMut(&super::Expression<C>),
+    {
+        self.root.for_each(f);
+    }
 }
 
 impl<C> Default for Script<C> {

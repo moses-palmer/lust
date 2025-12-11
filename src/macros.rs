@@ -31,7 +31,7 @@ macro_rules! fail {
 /// #[derive(Default)]
 /// struct Context;
 ///
-/// lust::commands! {
+/// lust::commands_all! {
 ///     enum Commands<
 ///         Tag = Tag,
 ///         Context = Context,
@@ -94,7 +94,7 @@ macro_rules! commands {
         $(#[$struct_meta:meta])*
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
-        ),* $(,)?> {
+        ),* $(,)?> $(impl ())? {
             $(
                 $(#[$command_meta:meta])*
                 $atom:literal => $command:ident(
@@ -151,6 +151,18 @@ macro_rules! commands {
                         Self::$command(_) => $atom,
                     )*
                 }
+            }
+
+            fn arguments(&self) -> &[$crate::Expression<Self>] {
+                match self {$(
+                    Self::$command(args) => args,
+                )*}
+            }
+
+            fn arguments_mut(&mut self) -> &mut [$crate::Expression<Self>] {
+                match self {$(
+                    Self::$command(args) => args,
+                )*}
             }
 
             fn parse<'a>(
@@ -317,15 +329,38 @@ macro_rules! commands {
     };
 }
 
+/// Defines a collection of built-in commands with all standard commands available.
+#[macro_export]
+macro_rules! commands_all {
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?> {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl () {
+                $($rest)*
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         Environment, Expression, Value, ast,
         exp::Error,
         test_helpers::{Context, Tag},
+        val::owned,
     };
 
-    commands! {
+    commands_all! {
         pub enum Command<
             Tag = Tag,
             Context = Context,
@@ -406,5 +441,93 @@ mod tests {
 
         // Assert
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each() {
+        // Arrange
+        let script = r"(
+            fixed
+            (optional 3 1 5)
+            (optional 1 3 7))";
+        let expected = vec![
+            "fixed".to_string(),
+            "optional".to_string(),
+            "3".to_string(),
+            "1".to_string(),
+            "5".to_string(),
+            "optional".to_string(),
+            "1".to_string(),
+            "3".to_string(),
+            "7".to_string(),
+        ];
+
+        // Act
+        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
+        let expression = Expression::<Command>::try_from(&ast).expect("compiles");
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.to_string()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_mut() {
+        // Arrange
+        let script = r"(
+            fixed
+            (optional 3 1 5)
+            (optional 1 3 7))";
+        let expected_order = vec![
+            "fixed".to_string(),
+            "optional".to_string(),
+            "3".to_string(),
+            "1".to_string(),
+            "5".to_string(),
+            "optional".to_string(),
+            "1".to_string(),
+            "3".to_string(),
+            "7".to_string(),
+        ];
+        let expected_result1 = owned::Value::from(Value::from(7.0));
+        let expected_result2 = owned::Value::from(Value::from(8.0));
+
+        // Act
+        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
+        let mut expression = Expression::<Command>::try_from(&ast).expect("compiles");
+        let actual_order = {
+            let mut r = Vec::new();
+            expression.for_each_mut(|e| r.push(e.to_string()));
+            r
+        };
+        let actual_result1 = owned::Value::try_from(
+            expression
+                .clone()
+                .link()
+                .evaluate(&Context, &Environment::empty())
+                .expect("evaluates"),
+        )
+        .expect("serializable");
+        expression.for_each_mut(|e| match e {
+            Expression::Number(v) => {
+                *v += 1.0;
+            }
+            _ => {}
+        });
+        let actual_result2 = owned::Value::try_from(
+            expression
+                .clone()
+                .link()
+                .evaluate(&Context, &Environment::empty())
+                .expect("evaluates"),
+        )
+        .expect("serializable");
+
+        assert_eq!(expected_order, actual_order);
+        assert_eq!(expected_result1, actual_result1);
+        assert_eq!(expected_result2, actual_result2);
     }
 }

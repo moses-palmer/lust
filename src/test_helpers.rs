@@ -39,6 +39,14 @@ impl exp::cmd::Command for Command {
         todo!()
     }
 
+    fn arguments(&self) -> &[exp::Expression<Self>] {
+        todo!()
+    }
+
+    fn arguments_mut(&mut self) -> &mut [exp::Expression<Self>] {
+        todo!()
+    }
+
     fn parse<'a>(
         _head: &'a ast::Node,
         _tail: &'a [ast::Node],

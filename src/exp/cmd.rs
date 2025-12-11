@@ -20,6 +20,12 @@ pub trait Command:
     /// The name of this command.
     fn name(&self) -> &'static str;
 
+    /// The arguments provided to this command.
+    fn arguments(&self) -> &[Expression<Self>];
+
+    /// The arguments provided to this command.
+    fn arguments_mut(&mut self) -> &mut [Expression<Self>];
+
     /// Parses an AST node into an expression.
     ///
     /// # Arguments
