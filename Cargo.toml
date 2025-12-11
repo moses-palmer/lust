@@ -10,3 +10,4 @@ thiserror = "2"
 
 [features]
 default = ["serde"]
+doc = []
