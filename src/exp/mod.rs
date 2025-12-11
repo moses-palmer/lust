@@ -126,16 +126,14 @@ where
                 Leaf(ast::Value::Atom { value }) => Ok(Expression::Reference(value.clone())),
                 Leaf(ast::Value::Number { value }) => Ok(Expression::Number(*value)),
                 Leaf(ast::Value::String { value }) => Ok(Expression::String(value.clone())),
-                Tree(v) => {
-                    if v.len() > 0 {
-                        C::parse(value)
-                    } else {
-                        Err(Error::Eval {
-                            node: value,
-                            message: "unexpected empty node",
-                        })?
-                    }
+                Tree(v) if !v.is_empty() => {
+                    let (head, tail) = (&v[0], &v[1..]);
+                    C::parse(head, tail)
                 }
+                _ => Err(Error::Eval {
+                    node: value,
+                    message: "unexpected node",
+                })?,
             }
         }
     }

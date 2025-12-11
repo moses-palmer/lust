@@ -1,3 +1,9 @@
+#[macro_use]
+mod macros;
+
+#[macro_use]
+pub mod eval;
+
 pub mod ast;
 pub mod exp;
 pub mod val;

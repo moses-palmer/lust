@@ -21,7 +21,14 @@ pub trait Command:
     fn name(&self) -> &'static str;
 
     /// Parses an AST node into an expression.
-    fn parse<'a>(node: &'a ast::Node) -> ::std::result::Result<Expression<Self>, Error<'a>>;
+    ///
+    /// # Arguments
+    /// *  `head` - The head of the AST node, which is the command name.
+    /// *  `tail` - The tail of the AST node, which are the arguments.
+    fn parse<'a>(
+        head: &'a ast::Node,
+        tail: &'a [ast::Node],
+    ) -> ::std::result::Result<Expression<Self>, Error<'a>>;
 
     /// Evaluates this expression with a runner in an environment.
     ///

@@ -40,7 +40,8 @@ impl exp::cmd::Command for Command {
     }
 
     fn parse<'a>(
-        _node: &'a ast::Node,
+        _head: &'a ast::Node,
+        _tail: &'a [ast::Node],
     ) -> ::std::result::Result<exp::Expression<Self>, exp::Error<'a>> {
         todo!()
     }
