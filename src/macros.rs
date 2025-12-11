@@ -48,6 +48,27 @@ macro_rules! fail {
 ///
 /// let result = eval!("(test 1 2 3)" => Commands);
 /// println!("Result: {result}");
+///
+/// assert_eq!(
+///     eval!("(+ 1 2 3)" => Commands),
+///     (1 + 2 + 3).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(- 1 2 3)" => Commands),
+///     (1 - 2 - 3).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(* 2 3 4)" => Commands),
+///     (2 * 3 * 4).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(/ 2 3 4)" => Commands),
+///     (2. / 3. / 4.).into(),
+/// );
+///
 /// # Ok(())
 /// # }
 /// ```
@@ -327,6 +348,90 @@ macro_rules! commands {
             }
         }
     };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( arithmetic $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Add all values passed.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (+ 1 2 3) ; 6
+                /// ```
+                "+" => Add(script, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc? + f32::try_from(script.value(i, ctx, env)?)?)
+                    )
+                    .map(Value::from)
+                }
+
+                /// Subtract all values passed from the first one.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (- 3 2 1) ; 0
+                /// ```
+                "-" => Subtract(script, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc? - f32::try_from(script.value(i, ctx, env)?)?)
+                    )
+                    .map(Value::from)
+                }
+
+                /// Multiply all values passed.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (* 1 2 3) ; 6
+                /// ```
+                "*" => Multiply(script, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc? * f32::try_from(script.value(i, ctx, env)?)?)
+                    )
+                    .map(Value::from)
+                }
+
+                /// Divide all values passed.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (/ 8 4) ; 2
+                /// ```
+                "/" => Divide(script, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| {
+                            let a = acc?;
+                            let b = f32::try_from(script.value(i, ctx, env)?)?;
+                            if b != 0.0 {
+                                Ok((a / b).into())
+                            } else {
+                                $crate::fail!("division by zero");
+                            }
+                        }
+                    )
+                    .map(Value::from)
+                }
+
+                $($rest)*
+            }
+        }
+    };
 }
 
 /// Defines a collection of built-in commands with all standard commands available.
@@ -344,7 +449,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl () {
+            ),*> impl ( arithmetic ) {
                 $($rest)*
             }
         }
