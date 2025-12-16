@@ -6,7 +6,7 @@ use std::convert::Infallible;
 
 use thiserror::Error;
 
-use crate::{Value, ast, common::write_list, val};
+use crate::{Value, ast, common::write_list, lambda, val};
 
 pub mod cmd;
 pub mod env;
@@ -52,6 +52,9 @@ pub enum Expression<C> {
     /// A list of expressions.
     List(Vec<Self>),
 
+    /// A map of expressions.
+    Map(Vec<String>, Vec<Self>),
+
     /// A quoted AST node.
     AST(ast::Node),
 
@@ -69,6 +72,12 @@ pub enum Expression<C> {
 
     /// A built-in command.
     Command(C),
+
+    /// A list of lambda definitions.
+    LambdaDef(Vec<lambda::Lambda<C>>),
+
+    /// A reference to a lambda.
+    LambdaRef(lambda::Ref),
 }
 
 impl<C> Expression<C>
@@ -95,6 +104,16 @@ where
         {
             f(e);
             match e {
+                Expression::List(v) => {
+                    for e in v {
+                        visit(e, f);
+                    }
+                }
+                Expression::Map(_, v) => {
+                    for e in v {
+                        visit(e, f);
+                    }
+                }
                 Expression::Command(c) => {
                     for e in c.arguments() {
                         visit(e, f);
@@ -122,6 +141,16 @@ where
         {
             f(e);
             match e {
+                Expression::List(v) => {
+                    for e in v {
+                        visit(e, f);
+                    }
+                }
+                Expression::Map(_, v) => {
+                    for e in v {
+                        visit(e, f);
+                    }
+                }
                 Expression::Command(c) => {
                     for e in c.arguments_mut() {
                         visit(e, f);
@@ -132,6 +161,60 @@ where
         }
 
         visit(self, &mut f);
+    }
+
+    /// Attempts to convert an AST node to a list of argument names.
+    ///
+    /// # Arguments
+    /// *  `node` - The node to convert.
+    pub fn as_argument_list(node: &ast::Node) -> Option<Vec<String>> {
+        match node.value() {
+            ast::NodeValue::Tree(nodes) => nodes
+                .iter()
+                .map(|node| match node {
+                    ast::Node {
+                        value: ast::NodeValue::Leaf(ast::Value::Atom { value }),
+                        ..
+                    } => Ok(value.clone()),
+                    _ => Err(()),
+                })
+                .collect::<::std::result::Result<Vec<_>, _>>()
+                .ok(),
+            _ => None,
+        }
+    }
+
+    /// Attempts to convert an AST node to a map of names to expressions.
+    ///
+    /// # Arguments
+    /// *  `node` - The node to convert.
+    pub fn as_map(node: &ast::Node) -> Option<Self> {
+        match node.value() {
+            ast::NodeValue::Tree(nodes) => nodes
+                .iter()
+                .map(|node| match node {
+                    ast::Node {
+                        value: ast::NodeValue::Tree(vs),
+                        ..
+                    } if vs.len() == 2 => {
+                        let key = match vs.first() {
+                            Some(ast::Node {
+                                value: ast::NodeValue::Leaf(ast::Value::Atom { value }),
+                                ..
+                            }) => Ok(value.clone()),
+                            _ => Err(()),
+                        }?;
+                        let val = Self::try_from(&vs[1]).map_err(|_| ())?;
+                        Ok((key, val))
+                    }
+                    _ => Err(()),
+                })
+                .collect::<::std::result::Result<Vec<_>, _>>()
+                .map(|l| l.into_iter().unzip::<_, _, Vec<_>, Vec<_>>())
+                .map(|(k, v)| Expression::Map(k, v))
+                .ok(),
+            _ => None,
+        }
     }
 }
 
@@ -149,12 +232,15 @@ where
         use Expression::*;
         match self {
             List(v) => write_list(v.iter(), f),
+            Map(v, _) => write_list(v.iter(), f),
             AST(v) => write!(f, "{v}"),
             Reference(v) => write!(f, "{v}"),
             Boolean(v) => write!(f, "{v}"),
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
             Command(v) => write!(f, "{v}"),
+            LambdaDef(_) => write!(f, "<lambda>"),
+            LambdaRef(v) => write!(f, "<lambda {v}>"),
         }
     }
 }
@@ -182,7 +268,16 @@ where
                 Leaf(ast::Value::String { value }) => Ok(Expression::String(value.clone())),
                 Tree(v) if !v.is_empty() => {
                     let (head, tail) = (&v[0], &v[1..]);
-                    C::parse(head, tail)
+                    C::parse(head, tail).or_else(|e| match e {
+                        Error::UnknownReference { .. } | Error::Eval { .. } => {
+                            Ok(Expression::List(
+                                v.iter()
+                                    .map(Expression::try_from)
+                                    .collect::<::std::result::Result<Vec<_>, _>>()?,
+                            ))
+                        }
+                        _ => Err(e),
+                    })
                 }
                 _ => Err(Error::Eval {
                     node: value,

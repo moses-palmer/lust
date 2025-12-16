@@ -1,4 +1,20 @@
 #[macro_export]
+macro_rules! extract {
+    ($source:expr, $pattern:pat => $value:expr, $node:ident, $message:literal $(,)?) => {
+        $crate::extract!($source, $pattern => $value).ok_or_else(|| $crate::exp::Error::Eval {
+            node: $node,
+            message: $message,
+        })
+    };
+    ($source:expr, $pattern:pat => $value:expr $(,)?) => {
+        match $source {
+            $pattern => Some($value),
+            _ => None,
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! capture {
     ($_t:tt => $sub:expr) => {
         $sub
@@ -67,6 +83,16 @@ macro_rules! fail {
 /// assert_eq!(
 ///     eval!("(/ 2 3 4)" => Commands),
 ///     (2. / 3. / 4.).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(let ((a 1) (b 2)) (+ a b 3))" => Commands),
+///     (1 + 2 + 3).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(let ((a (lambda (a1 a2) (+ a1 a2)))) (a 3 5))" => Commands),
+///     (3 + 5).into(),
 /// );
 ///
 /// # Ok(())
@@ -193,7 +219,7 @@ macro_rules! commands {
                 $crate::Expression<Self>,
                 $crate::exp::Error<'a>,
             > {
-                use $crate::{ast, exp::*};
+                use $crate::{ast, exp::*, lambda};
 
                 let command_name = if let ast::NodeValue::Leaf(ast::Value::Atom {
                     value,
@@ -303,7 +329,11 @@ macro_rules! commands {
                 use $crate::{ast, exp::*, val};
                 type Tag = <$name as $crate::Command>::Tag;
                 #[allow(unused)]
+                type Lambda = $crate::lambda::Ref;
+                #[allow(unused)]
                 type Value<'a> = $crate::Value<'a, Tag>;
+                #[allow(unused)]
+                type Values<'a> = $crate::Values<'a, Tag>;
 
                 match self {$(
                     Self::$command(args) => {
@@ -432,6 +462,102 @@ macro_rules! commands {
             }
         }
     };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( let $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Bind variables to values.
+                ///
+                /// The defined variables will be available in `body`
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (+ a b)) ; 3
+                /// ```
+                "let" => Let(
+                    script,
+                    ctx,
+                    env,
+                    definitions => |n| Expression::as_map(n)
+                        .ok_or_else(|| Error::Syntax {
+                            message: "expected map",
+                        }),
+                    body,
+                ) {
+                    let (names, expressions) = match definitions {
+                        Expression::Map(k, v) => Ok((k, v)),
+                        _ => Err(Error::Syntax {
+                            message: "expected map",
+                        }),
+                    }?;
+                    let values = expressions.iter()
+                        .map(|e| script.value(e, ctx, env))
+                        .collect::<::std::result::Result<Values, _>>()?;
+                    script.value(body, ctx, &env.with_scope(&names, &values))
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( lambda $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Create a lambda.
+                ///
+                /// To later invoke the lambda, bind it to a variable using `let`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
+                /// ```
+                "lambda" => Lambda(
+                    _script,
+                    _ctx,
+                    _env,
+                    args => |n| Ok(Expression::AST(n.clone())),
+                    body,
+                    ... => |node, a| {
+                        let arguments = $crate::extract!(&a[0], Expression::AST(v) => v,)
+                            .and_then(Expression::<Self>::as_argument_list)
+                            .ok_or_else(|| Error::Eval {
+                                node,
+                                message: "invalid argument list",
+                            })?;
+                        let body = a[1].clone();
+
+                        Ok(Expression::LambdaDef(vec![lambda::Lambda::new(arguments, body)]))
+                    })
+
+                $($rest)*
+            }
+        }
+    };
 }
 
 /// Defines a collection of built-in commands with all standard commands available.
@@ -449,7 +575,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( arithmetic ) {
+            ),*> impl ( arithmetic, let, lambda ) {
                 $($rest)*
             }
         }
@@ -580,6 +706,83 @@ mod tests {
     }
 
     #[test]
+    fn expression_for_each_list() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::List(vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            ]),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let expression = Expression::<Command>::List(vec![
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+        ]);
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_map() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::Map(
+                vec!["a".into(), "b".into(), "c".into()],
+                vec![
+                    Expression::Number(1.0),
+                    Expression::Number(2.0),
+                    Expression::Map(
+                        vec!["d".into(), "e".into()],
+                        vec![Expression::Number(3.0), Expression::Number(4.0)],
+                    ),
+                ],
+            ),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::Map(
+                vec!["d".into(), "e".into()],
+                vec![Expression::Number(3.0), Expression::Number(4.0)],
+            ),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let expression = Expression::<Command>::Map(
+            vec!["a".into(), "b".into(), "c".into()],
+            vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::Map(
+                    vec!["d".into(), "e".into()],
+                    vec![Expression::Number(3.0), Expression::Number(4.0)],
+                ),
+            ],
+        );
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
     fn expression_for_each_mut() {
         // Arrange
         let script = r"(
@@ -597,8 +800,8 @@ mod tests {
             "3".to_string(),
             "7".to_string(),
         ];
-        let expected_result1 = owned::Value::from(Value::from(7.0));
-        let expected_result2 = owned::Value::from(Value::from(8.0));
+        let expected_result1 = owned::Value::try_from(Value::from(7.0)).expect("owned");
+        let expected_result2 = owned::Value::try_from(Value::from(8.0)).expect("owned");
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
@@ -634,5 +837,102 @@ mod tests {
         assert_eq!(expected_order, actual_order);
         assert_eq!(expected_result1, actual_result1);
         assert_eq!(expected_result2, actual_result2);
+    }
+
+    #[test]
+    fn expression_for_each_mut_list() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::List(vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            ]),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let mut expression = Expression::<Command>::List(vec![
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+        ]);
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each_mut(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_mut_map() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::Map(
+                vec!["a".into(), "b".into(), "c".into()],
+                vec![
+                    Expression::Number(1.0),
+                    Expression::Number(2.0),
+                    Expression::Map(
+                        vec!["d".into(), "e".into()],
+                        vec![Expression::Number(3.0), Expression::Number(4.0)],
+                    ),
+                ],
+            ),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::Map(
+                vec!["d".into(), "e".into()],
+                vec![Expression::Number(3.0), Expression::Number(4.0)],
+            ),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let mut expression = Expression::<Command>::Map(
+            vec!["a".into(), "b".into(), "c".into()],
+            vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::Map(
+                    vec!["d".into(), "e".into()],
+                    vec![Expression::Number(3.0), Expression::Number(4.0)],
+                ),
+            ],
+        );
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each_mut(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_link() {
+        // Arrange
+        let script = r"(lambda (a b) (+ a b))";
+
+        // Act
+        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
+        let expression = Expression::<Command>::try_from(&ast)
+            .expect("compiles")
+            .link();
+        let actual_order = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(actual_order.len(), 1);
+        assert!(matches!(actual_order[0], Expression::LambdaRef(_)));
     }
 }

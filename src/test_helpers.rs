@@ -12,6 +12,7 @@ impl crate::val::Tag for Tag {}
 pub type Value<'a> = crate::Value<'a, Tag>;
 
 pub struct Context;
+pub type Expression = crate::Expression<Command>;
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(::serde::Deserialize, ::serde::Serialize))]

@@ -19,6 +19,7 @@ pub mod eval;
 
 pub mod ast;
 pub mod exp;
+pub mod lambda;
 pub mod val;
 
 #[cfg(feature = "doc")]
@@ -31,4 +32,4 @@ pub(crate) mod common;
 pub use common::Serializable;
 
 pub use exp::{Expression, cmd::Command, env::Environment, linked::Script};
-pub use val::Value;
+pub use val::{Value, Values};
