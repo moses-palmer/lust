@@ -80,22 +80,26 @@ where
     }
 }
 
-impl<T> From<super::Value<'_, T>> for Value<T>
+impl<T> TryFrom<super::Value<'_, T>> for Value<T>
 where
     T: super::Tag,
 {
-    fn from(value: super::Value<'_, T>) -> Self {
-        (&value).into()
+    type Error = super::Error;
+
+    fn try_from(value: super::Value<'_, T>) -> Result<Self, Self::Error> {
+        (&value).try_into()
     }
 }
 
-impl<T> From<&'_ super::Value<'_, T>> for Value<T>
+impl<T> TryFrom<&'_ super::Value<'_, T>> for Value<T>
 where
     T: super::Tag,
 {
-    fn from(value: &super::Value<'_, T>) -> Self {
+    type Error = super::Error;
+
+    fn try_from(value: &super::Value<'_, T>) -> Result<Self, Self::Error> {
         use super::Value::*;
-        match value {
+        Ok(match value {
             Void => Self::Void,
             AST(v) => Self::AST(Clone::clone(v)),
             Tag(v) => Self::Tag(*v),
@@ -103,6 +107,7 @@ where
             Number(v) => Self::Number(*v),
             Atom(v) => Self::Atom(v.to_string()),
             String(v) => Self::String(v.to_string()),
-        }
+            Lambda(_) => return Err(super::Error::Operation("cannot serialize lambda")),
+        })
     }
 }

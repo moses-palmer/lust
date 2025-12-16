@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::ast::{self, token::tokenizer::Tokenizer};
+use crate::{
+    ast::{self, token::tokenizer::Tokenizer},
+    lambda,
+};
 
 pub mod owned;
 
@@ -51,6 +54,9 @@ pub enum Value<'a, T> {
 
     /// A string.
     String(&'a str),
+
+    /// A reference to a lambda.
+    Lambda(lambda::Ref),
 }
 
 impl<T> Value<'_, T> {
@@ -74,6 +80,7 @@ impl<T> Value<'_, T> {
             Number(_) => "number",
             Atom(_) => "atom",
             String(_) => "string",
+            Lambda(_) => "lambda",
         }
     }
 }
@@ -97,6 +104,7 @@ where
             Boolean(v) => write!(f, "{}", if *v { Self::TRUE } else { Self::FALSE }),
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
+            Lambda(v) => write!(f, "<lambda {v}>"),
         }
     }
 }
@@ -117,6 +125,12 @@ where
         } else {
             Value::Void
         }
+    }
+}
+
+impl<T> From<lambda::Ref> for Value<'_, T> {
+    fn from(value: lambda::Ref) -> Self {
+        Value::Lambda(value)
     }
 }
 
@@ -258,6 +272,9 @@ unwrap!(String {
 unwrap!(&'a ast::Node {
     AST(v) => v,
 });
+unwrap!(lambda::Ref {
+    Lambda(v) => v,
+});
 
 /// Generates an implementation for an operation for [`Value`].
 macro_rules! op {
@@ -302,6 +319,9 @@ op!(::std::ops::Div => div {
         Err(Error::Operation("division by zero"))
     },
 });
+
+/// A transient collection of values.
+pub type Values<'a, T> = ::smallvec::SmallVec<[Value<'a, T>; 8]>;
 
 #[cfg(test)]
 mod tests {
