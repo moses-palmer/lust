@@ -38,7 +38,7 @@ macro_rules! fail {
 /// # use lust::*;
 /// #
 /// // Tagged values must implement a few traits
-/// #[derive(Clone, Copy, Debug, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 /// #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 /// enum Tag {}
 /// impl lust::val::Tag for Tag {}
@@ -93,6 +93,51 @@ macro_rules! fail {
 /// assert_eq!(
 ///     eval!("(let ((a (lambda (a1 a2) (+ a1 a2)))) (a 3 5))" => Commands),
 ///     (3 + 5).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(if (= 1 2) 1 42)" => Commands),
+///     42.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(< 1 2)" => Commands),
+///     (1 < 2).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(<= 2 1)" => Commands),
+///     (2 <= 1).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= 1 (- 2 1))" => Commands),
+///     (1 == (2 - 1)).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= 1 2)" => Commands),
+///     (1 == 2).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= \"a string\" \"a string\")" => Commands),
+///     ("a string" == "a string").into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= 1 true)" => Commands),
+///     false.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(>= 2 1)" => Commands),
+///     (2 >= 1).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(> 1 0)" => Commands),
+///     (1 > 0).into(),
 /// );
 ///
 /// # Ok(())
@@ -558,6 +603,147 @@ macro_rules! commands {
             }
         }
     };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( if $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Evaluate expressions conditionally.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
+                /// ```
+                "if" => If(
+                    script,
+                    ctx,
+                    env,
+                    cond: bool,
+                    if_true,
+                    if_false,
+                ) {
+                    script.value(
+                        if cond { if_true } else { if_false },
+                        ctx,
+                       env,
+                    )
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( cmp $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Check whether `a < b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (< 1 2) ; true
+                /// ```
+                "<" => Lt(
+                    _script,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a < b).into())
+                }
+
+                /// Check whether `a <= b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (<= 1 2) ; true
+                /// ```
+                "<=" => LtE(
+                    _script,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a <= b).into())
+                }
+
+                /// Check whether `a == b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (= 1 2) ; false
+                /// ```
+                "=" => Eq(
+                    _script,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a == b).into())
+                }
+
+                /// Check whether `a >= b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (>= 1 2) ; false
+                /// ```
+                ">=" => GtE(
+                    _script,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a >= b).into())
+                }
+
+                /// Check whether `a > b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (> 1 2) ; false
+                /// ```
+                ">" => Gt(
+                    _script,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a > b).into())
+                }
+
+                $($rest)*
+            }
+        }
+    };
 }
 
 /// Defines a collection of built-in commands with all standard commands available.
@@ -575,7 +761,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( arithmetic, let, lambda ) {
+            ),*> impl ( arithmetic, let, lambda, if, cmp ) {
                 $($rest)*
             }
         }

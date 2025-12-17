@@ -27,7 +27,7 @@ pub enum Error {
 }
 
 /// An opaque tagged value.
-pub trait Tag: Copy + PartialEq + ::std::fmt::Debug + crate::Serializable {}
+pub trait Tag: Copy + PartialEq + PartialOrd + ::std::fmt::Debug + crate::Serializable {}
 
 /// A value.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -105,6 +105,22 @@ where
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
             Lambda(v) => write!(f, "<lambda {v}>"),
+        }
+    }
+}
+
+impl<T> PartialOrd for Value<'_, T>
+where
+    T: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use Value::*;
+        match (self, other) {
+            (Tag(a), Tag(b)) => a.partial_cmp(b),
+            (Boolean(a), Boolean(b)) => a.partial_cmp(b),
+            (Number(a), Number(b)) => a.partial_cmp(b),
+            (String(a), String(b)) => a.partial_cmp(b),
+            _ => None,
         }
     }
 }
