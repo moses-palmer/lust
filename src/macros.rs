@@ -1,4 +1,20 @@
 #[macro_export]
+macro_rules! extract {
+    ($source:expr, $pattern:pat => $value:expr, $node:ident, $message:literal $(,)?) => {
+        $crate::extract!($source, $pattern => $value).ok_or_else(|| $crate::exp::Error::Eval {
+            node: $node,
+            message: $message,
+        })
+    };
+    ($source:expr, $pattern:pat => $value:expr $(,)?) => {
+        match $source {
+            $pattern => Some($value),
+            _ => None,
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! capture {
     ($_t:tt => $sub:expr) => {
         $sub
@@ -22,7 +38,7 @@ macro_rules! fail {
 /// # use lust::*;
 /// #
 /// // Tagged values must implement a few traits
-/// #[derive(Clone, Copy, Debug, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 /// #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 /// enum Tag {}
 /// impl lust::val::Tag for Tag {}
@@ -31,16 +47,16 @@ macro_rules! fail {
 /// #[derive(Default)]
 /// struct Context;
 ///
-/// lust::commands! {
+/// lust::commands_all! {
 ///     enum Commands<
 ///         Tag = Tag,
 ///         Context = Context,
 ///     > {
 ///         /// This command is invoked as `(test 1 ...)`, and the first argument must be an
 ///         /// unsigned 32 bit integer
-///         "test" => Test(script, ctx, env, param: u32, ...args) {
+///         "test" => Test(script, alloc, ctx, env, param: u32, ...args) {
 ///             args.next()
-///                 .map(|e| script.value(e, ctx, env))
+///                 .map(|e| script.value(e, alloc, ctx, env))
 ///                 .unwrap_or_else(|| Ok(Value::NIL))
 ///         }
 ///     }
@@ -48,6 +64,97 @@ macro_rules! fail {
 ///
 /// let result = eval!("(test 1 2 3)" => Commands);
 /// println!("Result: {result}");
+///
+/// assert_eq!(
+///     eval!("(+ 1 2 3)" => Commands),
+///     (1 + 2 + 3).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(- 1 2 3)" => Commands),
+///     (1 - 2 - 3).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(* 2 3 4)" => Commands),
+///     (2 * 3 * 4).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(/ 2 3 4)" => Commands),
+///     (2. / 3. / 4.).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(let ((a 1) (b 2)) (+ a b 3))" => Commands),
+///     (1 + 2 + 3).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(let ((a (lambda (a1 a2) (+ a1 a2)))) (a 3 5))" => Commands),
+///     (3 + 5).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(if (= 1 2) 1 42)" => Commands),
+///     42.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(< 1 2)" => Commands),
+///     (1 < 2).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(<= 2 1)" => Commands),
+///     (2 <= 1).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= 1 (- 2 1))" => Commands),
+///     (1 == (2 - 1)).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= 1 2)" => Commands),
+///     (1 == 2).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= \"a string\" \"a string\")" => Commands),
+///     ("a string" == "a string").into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(= 1 true)" => Commands),
+///     false.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(>= 2 1)" => Commands),
+///     (2 >= 1).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(> 1 0)" => Commands),
+///     (1 > 0).into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(list 1 2 3 5 8)" => Commands),
+///     vec![1.into(), 2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(list 1 2 3 5 8)" => Commands),
+///     vec![1.into(), 2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(cdr (list 1 2 3 5 8))" => Commands),
+///     vec![2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
 /// # Ok(())
 /// # }
 /// ```
@@ -94,11 +201,12 @@ macro_rules! commands {
         $(#[$struct_meta:meta])*
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
-        ),* $(,)?> {
+        ),* $(,)?> $(impl ())? {
             $(
                 $(#[$command_meta:meta])*
                 $atom:literal => $command:ident(
                     $script_name:ident,
+                    $alloc_name:ident,
                     $ctx_name:ident,
                     $env_name:ident
                     $(
@@ -153,6 +261,18 @@ macro_rules! commands {
                 }
             }
 
+            fn arguments(&self) -> &[$crate::Expression<Self>] {
+                match self {$(
+                    Self::$command(args) => args,
+                )*}
+            }
+
+            fn arguments_mut(&mut self) -> &mut [$crate::Expression<Self>] {
+                match self {$(
+                    Self::$command(args) => args,
+                )*}
+            }
+
             fn parse<'a>(
                 head: &'a $crate::ast::Node,
                 tail: &'a [$crate::ast::Node],
@@ -160,7 +280,7 @@ macro_rules! commands {
                 $crate::Expression<Self>,
                 $crate::exp::Error<'a>,
             > {
-                use $crate::{ast, exp::*};
+                use $crate::{ast, exp::*, lambda};
 
                 let command_name = if let ast::NodeValue::Leaf(ast::Value::Atom {
                     value,
@@ -259,18 +379,33 @@ macro_rules! commands {
                 }
             }
 
-            fn evaluate<'a, 'b>(
+            fn evaluate<'a, 'b, A>(
                 &'a self,
                 script: &'a $crate::Script<Self>,
+                alloc: &A,
                 ctx: &Self::Context,
                 env: &$crate::Environment<'a, 'b, Self>,
-            ) -> $crate::exp::Result<'a, Self> {
+            ) -> $crate::exp::Result<'a, Self>
+            where
+                A: $crate::alloc::Allocator<
+                    'a,
+                    Item = $crate::Cons<'a, $crate::Value<'a, Self::Tag>>,
+                > + 'a,
+                Self::Tag: 'a,
+            {
                 // Add a few type aliases and uses for convenience
                 #[allow(unused)]
                 use $crate::{ast, exp::*, val};
                 type Tag = <$name as $crate::Command>::Tag;
+
+                #[allow(unused)]
+                type Cons<'a> = $crate::Cons<'a, Value<'a>>;
+                #[allow(unused)]
+                type Lambda = $crate::lambda::Ref;
                 #[allow(unused)]
                 type Value<'a> = $crate::Value<'a, Tag>;
+                #[allow(unused)]
+                type Values<'a> = $crate::Values<'a, Tag>;
 
                 match self {$(
                     Self::$command(args) => {
@@ -285,7 +420,7 @@ macro_rules! commands {
                             #[allow(unused)]
                             let $arg_name = expression;
                             $(
-                                let $arg_name: $arg_type = script.value($arg_name, ctx, env)?
+                                let $arg_name: $arg_type = script.value($arg_name, alloc, ctx, env)?
                                     .try_into()
                                     .map_err($crate::exp::Error::from)?;
                             )?
@@ -296,6 +431,7 @@ macro_rules! commands {
                         )?)?
                         {
                             let $script_name = script;
+                            let $alloc_name = alloc;
                             let $ctx_name = ctx;
                             let $env_name = env;
                             Option::<$crate::exp::Result<Self>>::None
@@ -315,27 +451,441 @@ macro_rules! commands {
             }
         }
     };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( arithmetic $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Add all values passed.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (+ 1 2 3) ; 6
+                /// ```
+                "+" => Add(script, alloc, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc? + f32::try_from(script.value(i, alloc, ctx, env)?)?)
+                    )
+                    .map(Value::from)
+                }
+
+                /// Subtract all values passed from the first one.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (- 3 2 1) ; 0
+                /// ```
+                "-" => Subtract(script, alloc, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc? - f32::try_from(script.value(i, alloc, ctx, env)?)?)
+                    )
+                    .map(Value::from)
+                }
+
+                /// Multiply all values passed.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (* 1 2 3) ; 6
+                /// ```
+                "*" => Multiply(script, alloc, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc? * f32::try_from(script.value(i, alloc, ctx, env)?)?)
+                    )
+                    .map(Value::from)
+                }
+
+                /// Divide all values passed.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (/ 8 4) ; 2
+                /// ```
+                "/" => Divide(script, alloc, ctx, env, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| {
+                            let a = acc?;
+                            let b = f32::try_from(script.value(i, alloc, ctx, env)?)?;
+                            if b != 0.0 {
+                                Ok((a / b).into())
+                            } else {
+                                $crate::fail!("division by zero");
+                            }
+                        }
+                    )
+                    .map(Value::from)
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( let $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Bind variables to values.
+                ///
+                /// The defined variables will be available in `body`
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (+ a b)) ; 3
+                /// ```
+                "let" => Let(
+                    script,
+                    alloc,
+                    ctx,
+                    env,
+                    definitions => |n| Expression::as_map(n)
+                        .ok_or_else(|| Error::Syntax {
+                            message: "expected map",
+                        }),
+                    body,
+                ) {
+                    let (names, expressions) = match definitions {
+                        Expression::Map(k, v) => Ok((k, v)),
+                        _ => Err(Error::Syntax {
+                            message: "expected map",
+                        }),
+                    }?;
+                    let values = expressions.iter()
+                        .map(|e| script.value(e, alloc, ctx, env))
+                        .collect::<::std::result::Result<Values, _>>()?;
+                    script.value(body, alloc, ctx, &env.with_scope(&names, &values))
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( lambda $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Create a lambda.
+                ///
+                /// To later invoke the lambda, bind it to a variable using `let`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
+                /// ```
+                "lambda" => Lambda(
+                    _script,
+                    _alloc,
+                    _ctx,
+                    _env,
+                    args => |n| Ok(Expression::AST(n.clone())),
+                    body,
+                    ... => |node, a| {
+                        let arguments = $crate::extract!(&a[0], Expression::AST(v) => v,)
+                            .and_then(Expression::<Self>::as_argument_list)
+                            .ok_or_else(|| Error::Eval {
+                                node,
+                                message: "invalid argument list",
+                            })?;
+                        let body = a[1].clone();
+
+                        Ok(Expression::LambdaDef(vec![lambda::Lambda::new(arguments, body)]))
+                    })
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( if $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Evaluate expressions conditionally.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
+                /// ```
+                "if" => If(
+                    script,
+                    alloc,
+                    ctx,
+                    env,
+                    cond: bool,
+                    if_true,
+                    if_false,
+                ) {
+                    script.value(
+                        if cond { if_true } else { if_false },
+                        alloc,
+                        ctx,
+                       env,
+                    )
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( cmp $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Check whether `a < b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (< 1 2) ; true
+                /// ```
+                "<" => Lt(
+                    _script,
+                    _alloc,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a < b).into())
+                }
+
+                /// Check whether `a <= b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (<= 1 2) ; true
+                /// ```
+                "<=" => LtE(
+                    _script,
+                    _alloc,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a <= b).into())
+                }
+
+                /// Check whether `a == b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (= 1 2) ; false
+                /// ```
+                "=" => Eq(
+                    _script,
+                    _alloc,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a == b).into())
+                }
+
+                /// Check whether `a >= b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (>= 1 2) ; false
+                /// ```
+                ">=" => GtE(
+                    _script,
+                    _alloc,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a >= b).into())
+                }
+
+                /// Check whether `a > b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (> 1 2) ; false
+                /// ```
+                ">" => Gt(
+                    _script,
+                    _alloc,
+                    _ctx,
+                    _env,
+                    a: Value,
+                    b: Value,
+                ) {
+                    Ok((a > b).into())
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( list $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Construct a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (list 1 2 3) ; (1 2 3)
+                /// ```
+                "list" => List(script, alloc, ctx, env, ...items) {
+                    items.rev()
+                        .try_fold(
+                            Value::NIL,
+                            |acc, e| {
+                                let v = script.value(e, alloc, ctx, env)?;
+                                if let Value::List(cons) = acc {
+                                    Ok(alloc.alloc(cons.prepend(v))?.into())
+                                } else {
+                                    Ok(alloc.alloc(Cons::single(v))?.into())
+                                }
+                            },
+                        )
+                }
+
+                /// Get the head of a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (car (list 1 2 3)) ; 1
+                /// ```
+                "car" => Car(_script, _alloc, _ctx, _env, cons: &'a Cons<'a>) {
+                    Ok(*cons.car())
+                }
+
+                /// Get the tail of a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (cdr (list 1 2 3)) ; (2 3)
+                /// ```
+                "cdr" => Cdr(_script, _alloc, _ctx, _env, cons: &'a Cons<'a>) {
+                    Ok(cons.cdr().next().map(Into::into).unwrap_or(Value::NIL))
+                }
+
+                $($rest)*
+            }
+        }
+    };
+}
+
+/// Defines a collection of built-in commands with all standard commands available.
+#[macro_export]
+macro_rules! commands_all {
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?> {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( arithmetic, let, lambda, if, cmp, list ) {
+                $($rest)*
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        Environment, Expression, Value, ast,
+        Cons, Environment, Expression, Value, ast,
         exp::Error,
         test_helpers::{Context, Tag},
+        val::owned,
     };
 
-    commands! {
+    commands_all! {
         pub enum Command<
             Tag = Tag,
             Context = Context,
         > {
-            "fixed" => Fixed(script, ctx, env, a, b) {
-                script.value(b, ctx, env)
+            "fixed" => Fixed(script, alloc, ctx, env, a, b) {
+                script.value(b, alloc, ctx, env)
             }
-            "optional" => Optional(script, ctx, env, a, ...b) {
-                b.last().map(|e| script.value(e, ctx, env))
-                    .unwrap_or_else(|| script.value(a, ctx, env))
+            "optional" => Optional(script, alloc, ctx, env, a, ...b) {
+                b.last().map(|e| script.value(e, alloc, ctx, env))
+                    .unwrap_or_else(|| script.value(a, alloc, ctx, env))
             }
         }
     }
@@ -395,6 +945,7 @@ mod tests {
     fn additional_arguments_allowed_for_optional() {
         // Arrange
         let script = "(optional 1 2 3 4)";
+        let alloc = crate::alloc::zero::Allocator::<Cons<Value<Tag>>>::default();
         let expected = Ok(Value::from(4.0).try_into().unwrap());
 
         // Act
@@ -402,9 +953,272 @@ mod tests {
         let expression = Expression::<Command>::try_from(&ast)
             .expect("compiles")
             .link();
-        let actual = expression.evaluate(&Context, &Environment::empty());
+        let actual = expression.evaluate(&alloc, &Context, &Environment::empty());
 
         // Assert
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each() {
+        // Arrange
+        let script = r"(
+            fixed
+            (optional 3 1 5)
+            (optional 1 3 7))";
+        let expected = vec![
+            "fixed".to_string(),
+            "optional".to_string(),
+            "3".to_string(),
+            "1".to_string(),
+            "5".to_string(),
+            "optional".to_string(),
+            "1".to_string(),
+            "3".to_string(),
+            "7".to_string(),
+        ];
+
+        // Act
+        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
+        let expression = Expression::<Command>::try_from(&ast).expect("compiles");
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.to_string()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_list() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::List(vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            ]),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let expression = Expression::<Command>::List(vec![
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+        ]);
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_map() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::Map(
+                vec!["a".into(), "b".into(), "c".into()],
+                vec![
+                    Expression::Number(1.0),
+                    Expression::Number(2.0),
+                    Expression::Map(
+                        vec!["d".into(), "e".into()],
+                        vec![Expression::Number(3.0), Expression::Number(4.0)],
+                    ),
+                ],
+            ),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::Map(
+                vec!["d".into(), "e".into()],
+                vec![Expression::Number(3.0), Expression::Number(4.0)],
+            ),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let expression = Expression::<Command>::Map(
+            vec!["a".into(), "b".into(), "c".into()],
+            vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::Map(
+                    vec!["d".into(), "e".into()],
+                    vec![Expression::Number(3.0), Expression::Number(4.0)],
+                ),
+            ],
+        );
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_mut() {
+        // Arrange
+        let script = r"(
+            fixed
+            (optional 3 1 5)
+            (optional 1 3 7))";
+        let alloc = crate::alloc::zero::Allocator::<Cons<Value<Tag>>>::default();
+        let expected_order = vec![
+            "fixed".to_string(),
+            "optional".to_string(),
+            "3".to_string(),
+            "1".to_string(),
+            "5".to_string(),
+            "optional".to_string(),
+            "1".to_string(),
+            "3".to_string(),
+            "7".to_string(),
+        ];
+        let expected_result1 = owned::Value::try_from(Value::from(7.0)).expect("owned");
+        let expected_result2 = owned::Value::try_from(Value::from(8.0)).expect("owned");
+
+        // Act
+        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
+        let mut expression = Expression::<Command>::try_from(&ast).expect("compiles");
+        let actual_order = {
+            let mut r = Vec::new();
+            expression.for_each_mut(|e| r.push(e.to_string()));
+            r
+        };
+        let actual_result1 = owned::Value::try_from(
+            expression
+                .clone()
+                .link()
+                .evaluate(&alloc, &Context, &Environment::empty())
+                .expect("evaluates"),
+        )
+        .expect("serializable");
+        expression.for_each_mut(|e| match e {
+            Expression::Number(v) => {
+                *v += 1.0;
+            }
+            _ => {}
+        });
+        let actual_result2 = owned::Value::try_from(
+            expression
+                .clone()
+                .link()
+                .evaluate(&alloc, &Context, &Environment::empty())
+                .expect("evaluates"),
+        )
+        .expect("serializable");
+
+        assert_eq!(expected_order, actual_order);
+        assert_eq!(expected_result1, actual_result1);
+        assert_eq!(expected_result2, actual_result2);
+    }
+
+    #[test]
+    fn expression_for_each_mut_list() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::List(vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            ]),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let mut expression = Expression::<Command>::List(vec![
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+        ]);
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each_mut(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_for_each_mut_map() {
+        // Arrange
+        let expected = vec![
+            Expression::<Command>::Map(
+                vec!["a".into(), "b".into(), "c".into()],
+                vec![
+                    Expression::Number(1.0),
+                    Expression::Number(2.0),
+                    Expression::Map(
+                        vec!["d".into(), "e".into()],
+                        vec![Expression::Number(3.0), Expression::Number(4.0)],
+                    ),
+                ],
+            ),
+            Expression::Number(1.0),
+            Expression::Number(2.0),
+            Expression::Map(
+                vec!["d".into(), "e".into()],
+                vec![Expression::Number(3.0), Expression::Number(4.0)],
+            ),
+            Expression::Number(3.0),
+            Expression::Number(4.0),
+        ];
+
+        // Act
+        let mut expression = Expression::<Command>::Map(
+            vec!["a".into(), "b".into(), "c".into()],
+            vec![
+                Expression::Number(1.0),
+                Expression::Number(2.0),
+                Expression::Map(
+                    vec!["d".into(), "e".into()],
+                    vec![Expression::Number(3.0), Expression::Number(4.0)],
+                ),
+            ],
+        );
+        let actual = {
+            let mut r = Vec::new();
+            expression.for_each_mut(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn expression_link() {
+        // Arrange
+        let script = r"(lambda (a b) (+ a b))";
+
+        // Act
+        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
+        let expression = Expression::<Command>::try_from(&ast)
+            .expect("compiles")
+            .link();
+        let actual_order = {
+            let mut r = Vec::new();
+            expression.for_each(|e| r.push(e.clone()));
+            r
+        };
+
+        assert_eq!(actual_order.len(), 1);
+        assert!(matches!(actual_order[0], Expression::LambdaRef(_)));
     }
 }
