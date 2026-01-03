@@ -1,7 +1,12 @@
 use thiserror::Error;
 
-use crate::ast::{self, token::tokenizer::Tokenizer};
+use crate::{
+    ast::{self, token::tokenizer::Tokenizer},
+    common::write_list,
+    lambda,
+};
 
+pub mod cons;
 pub mod owned;
 
 /// A value operation failed.
@@ -24,7 +29,7 @@ pub enum Error {
 }
 
 /// An opaque tagged value.
-pub trait Tag: Copy + PartialEq + ::std::fmt::Debug + crate::Serializable {}
+pub trait Tag: Copy + PartialEq + PartialOrd + ::std::fmt::Debug + crate::Serializable {}
 
 /// A value.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -51,6 +56,12 @@ pub enum Value<'a, T> {
 
     /// A string.
     String(&'a str),
+
+    /// A reference to a lambda.
+    Lambda(lambda::Ref),
+
+    /// A list.
+    List(&'a cons::Cons<'a, Self>),
 }
 
 impl<T> Value<'_, T> {
@@ -74,6 +85,8 @@ impl<T> Value<'_, T> {
             Number(_) => "number",
             Atom(_) => "atom",
             String(_) => "string",
+            Lambda(_) => "lambda",
+            List(_) => "list",
         }
     }
 }
@@ -97,6 +110,28 @@ where
             Boolean(v) => write!(f, "{}", if *v { Self::TRUE } else { Self::FALSE }),
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
+            Lambda(v) => write!(f, "<lambda {v}>"),
+            List(v) => {
+                write!(f, "{}", Tokenizer::LEFT_PARENTHESIS)?;
+                write_list(v.iter(), f)?;
+                write!(f, "{}", Tokenizer::RIGHT_PARENTHESIS)
+            }
+        }
+    }
+}
+
+impl<T> PartialOrd for Value<'_, T>
+where
+    T: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use Value::*;
+        match (self, other) {
+            (Tag(a), Tag(b)) => a.partial_cmp(b),
+            (Boolean(a), Boolean(b)) => a.partial_cmp(b),
+            (Number(a), Number(b)) => a.partial_cmp(b),
+            (String(a), String(b)) => a.partial_cmp(b),
+            _ => None,
         }
     }
 }
@@ -117,6 +152,18 @@ where
         } else {
             Value::Void
         }
+    }
+}
+
+impl<T> From<lambda::Ref> for Value<'_, T> {
+    fn from(value: lambda::Ref) -> Self {
+        Value::Lambda(value)
+    }
+}
+
+impl<'a, T> From<&'a cons::Cons<'a, Value<'a, T>>> for Value<'a, T> {
+    fn from(value: &'a cons::Cons<'a, Value<'a, T>>) -> Self {
+        Value::List(value)
     }
 }
 
@@ -258,6 +305,12 @@ unwrap!(String {
 unwrap!(&'a ast::Node {
     AST(v) => v,
 });
+unwrap!(lambda::Ref {
+    Lambda(v) => v,
+});
+unwrap!(&'a cons::Cons<'a, Value<'a, T>> {
+    List(v) => v,
+});
 
 /// Generates an implementation for an operation for [`Value`].
 macro_rules! op {
@@ -302,6 +355,9 @@ op!(::std::ops::Div => div {
         Err(Error::Operation("division by zero"))
     },
 });
+
+/// A transient collection of values.
+pub type Values<'a, T> = ::smallvec::SmallVec<[Value<'a, T>; 8]>;
 
 #[cfg(test)]
 mod tests {

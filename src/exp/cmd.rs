@@ -3,7 +3,7 @@
 //! The [`Command`] trait is the means to have a script execute anything; its
 //! [`evalue`](Command::evaluate) method is the entry point into native code.
 
-use crate::{Script, Serializable, ast};
+use crate::{Script, Serializable, alloc, ast};
 
 use super::{Error, Expression, Result, env::Environment};
 
@@ -19,6 +19,12 @@ pub trait Command:
 
     /// The name of this command.
     fn name(&self) -> &'static str;
+
+    /// The arguments provided to this command.
+    fn arguments(&self) -> &[Expression<Self>];
+
+    /// The arguments provided to this command.
+    fn arguments_mut(&mut self) -> &mut [Expression<Self>];
 
     /// Parses an AST node into an expression.
     ///
@@ -36,10 +42,13 @@ pub trait Command:
     /// *  `script` - The linked script.
     /// *  `ctx` - The evaluation context.
     /// *  `env` - The environment.
-    fn evaluate<'a, 'b>(
+    fn evaluate<'a, 'b, A>(
         &'a self,
         script: &'a Script<Self>,
+        alloc: &A,
         ctx: &Self::Context,
         env: &Environment<'a, 'b, Self>,
-    ) -> Result<'a, Self>;
+    ) -> Result<'a, Self>
+    where
+        A: alloc::Allocator<'a, Item = crate::Cons<'a, crate::Value<'a, Self::Tag>>> + 'a;
 }

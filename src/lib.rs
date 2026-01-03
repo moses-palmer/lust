@@ -17,8 +17,10 @@ mod macros;
 #[macro_use]
 pub mod eval;
 
+pub mod alloc;
 pub mod ast;
 pub mod exp;
+pub mod lambda;
 pub mod val;
 
 #[cfg(feature = "doc")]
@@ -30,5 +32,6 @@ pub(crate) mod test_helpers;
 pub(crate) mod common;
 pub use common::Serializable;
 
+pub use alloc::Allocator;
 pub use exp::{Expression, cmd::Command, env::Environment, linked::Script};
-pub use val::Value;
+pub use val::{Value, Values, cons::Cons};
