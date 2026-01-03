@@ -54,9 +54,9 @@ macro_rules! fail {
 ///     > {
 ///         /// This command is invoked as `(test 1 ...)`, and the first argument must be an
 ///         /// unsigned 32 bit integer
-///         "test" => Test(script, ctx, env, param: u32, ...args) {
+///         "test" => Test(script, alloc, ctx, env, param: u32, ...args) {
 ///             args.next()
-///                 .map(|e| script.value(e, ctx, env))
+///                 .map(|e| script.value(e, alloc, ctx, env))
 ///                 .unwrap_or_else(|| Ok(Value::NIL))
 ///         }
 ///     }
@@ -140,6 +140,21 @@ macro_rules! fail {
 ///     (1 > 0).into(),
 /// );
 ///
+/// assert_eq!(
+///     eval!("(list 1 2 3 5 8)" => Commands),
+///     vec![1.into(), 2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(list 1 2 3 5 8)" => Commands),
+///     vec![1.into(), 2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(cdr (list 1 2 3 5 8))" => Commands),
+///     vec![2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
 /// # Ok(())
 /// # }
 /// ```
@@ -191,6 +206,7 @@ macro_rules! commands {
                 $(#[$command_meta:meta])*
                 $atom:literal => $command:ident(
                     $script_name:ident,
+                    $alloc_name:ident,
                     $ctx_name:ident,
                     $env_name:ident
                     $(
@@ -363,16 +379,27 @@ macro_rules! commands {
                 }
             }
 
-            fn evaluate<'a, 'b>(
+            fn evaluate<'a, 'b, A>(
                 &'a self,
                 script: &'a $crate::Script<Self>,
+                alloc: &A,
                 ctx: &Self::Context,
                 env: &$crate::Environment<'a, 'b, Self>,
-            ) -> $crate::exp::Result<'a, Self> {
+            ) -> $crate::exp::Result<'a, Self>
+            where
+                A: $crate::alloc::Allocator<
+                    'a,
+                    Item = $crate::Cons<'a, $crate::Value<'a, Self::Tag>>,
+                > + 'a,
+                Self::Tag: 'a,
+            {
                 // Add a few type aliases and uses for convenience
                 #[allow(unused)]
                 use $crate::{ast, exp::*, val};
                 type Tag = <$name as $crate::Command>::Tag;
+
+                #[allow(unused)]
+                type Cons<'a> = $crate::Cons<'a, Value<'a>>;
                 #[allow(unused)]
                 type Lambda = $crate::lambda::Ref;
                 #[allow(unused)]
@@ -393,7 +420,7 @@ macro_rules! commands {
                             #[allow(unused)]
                             let $arg_name = expression;
                             $(
-                                let $arg_name: $arg_type = script.value($arg_name, ctx, env)?
+                                let $arg_name: $arg_type = script.value($arg_name, alloc, ctx, env)?
                                     .try_into()
                                     .map_err($crate::exp::Error::from)?;
                             )?
@@ -404,6 +431,7 @@ macro_rules! commands {
                         )?)?
                         {
                             let $script_name = script;
+                            let $alloc_name = alloc;
                             let $ctx_name = ctx;
                             let $env_name = env;
                             Option::<$crate::exp::Result<Self>>::None
@@ -445,10 +473,10 @@ macro_rules! commands {
                 /// ```lisp
                 /// (+ 1 2 3) ; 6
                 /// ```
-                "+" => Add(script, ctx, env, first: f32, ...rest) {
+                "+" => Add(script, alloc, ctx, env, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
-                        |acc, i| Ok(acc? + f32::try_from(script.value(i, ctx, env)?)?)
+                        |acc, i| Ok(acc? + f32::try_from(script.value(i, alloc, ctx, env)?)?)
                     )
                     .map(Value::from)
                 }
@@ -459,10 +487,10 @@ macro_rules! commands {
                 /// ```lisp
                 /// (- 3 2 1) ; 0
                 /// ```
-                "-" => Subtract(script, ctx, env, first: f32, ...rest) {
+                "-" => Subtract(script, alloc, ctx, env, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
-                        |acc, i| Ok(acc? - f32::try_from(script.value(i, ctx, env)?)?)
+                        |acc, i| Ok(acc? - f32::try_from(script.value(i, alloc, ctx, env)?)?)
                     )
                     .map(Value::from)
                 }
@@ -473,10 +501,10 @@ macro_rules! commands {
                 /// ```lisp
                 /// (* 1 2 3) ; 6
                 /// ```
-                "*" => Multiply(script, ctx, env, first: f32, ...rest) {
+                "*" => Multiply(script, alloc, ctx, env, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
-                        |acc, i| Ok(acc? * f32::try_from(script.value(i, ctx, env)?)?)
+                        |acc, i| Ok(acc? * f32::try_from(script.value(i, alloc, ctx, env)?)?)
                     )
                     .map(Value::from)
                 }
@@ -487,12 +515,12 @@ macro_rules! commands {
                 /// ```lisp
                 /// (/ 8 4) ; 2
                 /// ```
-                "/" => Divide(script, ctx, env, first: f32, ...rest) {
+                "/" => Divide(script, alloc, ctx, env, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
                         |acc, i| {
                             let a = acc?;
-                            let b = f32::try_from(script.value(i, ctx, env)?)?;
+                            let b = f32::try_from(script.value(i, alloc, ctx, env)?)?;
                             if b != 0.0 {
                                 Ok((a / b).into())
                             } else {
@@ -533,6 +561,7 @@ macro_rules! commands {
                 /// ```
                 "let" => Let(
                     script,
+                    alloc,
                     ctx,
                     env,
                     definitions => |n| Expression::as_map(n)
@@ -548,9 +577,9 @@ macro_rules! commands {
                         }),
                     }?;
                     let values = expressions.iter()
-                        .map(|e| script.value(e, ctx, env))
+                        .map(|e| script.value(e, alloc, ctx, env))
                         .collect::<::std::result::Result<Values, _>>()?;
-                    script.value(body, ctx, &env.with_scope(&names, &values))
+                    script.value(body, alloc, ctx, &env.with_scope(&names, &values))
                 }
 
                 $($rest)*
@@ -583,6 +612,7 @@ macro_rules! commands {
                 /// ```
                 "lambda" => Lambda(
                     _script,
+                    _alloc,
                     _ctx,
                     _env,
                     args => |n| Ok(Expression::AST(n.clone())),
@@ -627,6 +657,7 @@ macro_rules! commands {
                 /// ```
                 "if" => If(
                     script,
+                    alloc,
                     ctx,
                     env,
                     cond: bool,
@@ -635,6 +666,7 @@ macro_rules! commands {
                 ) {
                     script.value(
                         if cond { if_true } else { if_false },
+                        alloc,
                         ctx,
                        env,
                     )
@@ -668,6 +700,7 @@ macro_rules! commands {
                 /// ```
                 "<" => Lt(
                     _script,
+                    _alloc,
                     _ctx,
                     _env,
                     a: Value,
@@ -684,6 +717,7 @@ macro_rules! commands {
                 /// ```
                 "<=" => LtE(
                     _script,
+                    _alloc,
                     _ctx,
                     _env,
                     a: Value,
@@ -700,6 +734,7 @@ macro_rules! commands {
                 /// ```
                 "=" => Eq(
                     _script,
+                    _alloc,
                     _ctx,
                     _env,
                     a: Value,
@@ -716,6 +751,7 @@ macro_rules! commands {
                 /// ```
                 ">=" => GtE(
                     _script,
+                    _alloc,
                     _ctx,
                     _env,
                     a: Value,
@@ -732,12 +768,74 @@ macro_rules! commands {
                 /// ```
                 ">" => Gt(
                     _script,
+                    _alloc,
                     _ctx,
                     _env,
                     a: Value,
                     b: Value,
                 ) {
                     Ok((a > b).into())
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( list $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Construct a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (list 1 2 3) ; (1 2 3)
+                /// ```
+                "list" => List(script, alloc, ctx, env, ...items) {
+                    items.rev()
+                        .try_fold(
+                            Value::NIL,
+                            |acc, e| {
+                                let v = script.value(e, alloc, ctx, env)?;
+                                if let Value::List(cons) = acc {
+                                    Ok(alloc.alloc(cons.prepend(v))?.into())
+                                } else {
+                                    Ok(alloc.alloc(Cons::single(v))?.into())
+                                }
+                            },
+                        )
+                }
+
+                /// Get the head of a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (car (list 1 2 3)) ; 1
+                /// ```
+                "car" => Car(_script, _alloc, _ctx, _env, cons: &'a Cons<'a>) {
+                    Ok(*cons.car())
+                }
+
+                /// Get the tail of a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (cdr (list 1 2 3)) ; (2 3)
+                /// ```
+                "cdr" => Cdr(_script, _alloc, _ctx, _env, cons: &'a Cons<'a>) {
+                    Ok(cons.cdr().next().map(Into::into).unwrap_or(Value::NIL))
                 }
 
                 $($rest)*
@@ -761,7 +859,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( arithmetic, let, lambda, if, cmp ) {
+            ),*> impl ( arithmetic, let, lambda, if, cmp, list ) {
                 $($rest)*
             }
         }
@@ -771,7 +869,7 @@ macro_rules! commands_all {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Environment, Expression, Value, ast,
+        Cons, Environment, Expression, Value, ast,
         exp::Error,
         test_helpers::{Context, Tag},
         val::owned,
@@ -782,12 +880,12 @@ mod tests {
             Tag = Tag,
             Context = Context,
         > {
-            "fixed" => Fixed(script, ctx, env, a, b) {
-                script.value(b, ctx, env)
+            "fixed" => Fixed(script, alloc, ctx, env, a, b) {
+                script.value(b, alloc, ctx, env)
             }
-            "optional" => Optional(script, ctx, env, a, ...b) {
-                b.last().map(|e| script.value(e, ctx, env))
-                    .unwrap_or_else(|| script.value(a, ctx, env))
+            "optional" => Optional(script, alloc, ctx, env, a, ...b) {
+                b.last().map(|e| script.value(e, alloc, ctx, env))
+                    .unwrap_or_else(|| script.value(a, alloc, ctx, env))
             }
         }
     }
@@ -847,6 +945,7 @@ mod tests {
     fn additional_arguments_allowed_for_optional() {
         // Arrange
         let script = "(optional 1 2 3 4)";
+        let alloc = crate::alloc::zero::Allocator::<Cons<Value<Tag>>>::default();
         let expected = Ok(Value::from(4.0).try_into().unwrap());
 
         // Act
@@ -854,7 +953,7 @@ mod tests {
         let expression = Expression::<Command>::try_from(&ast)
             .expect("compiles")
             .link();
-        let actual = expression.evaluate(&Context, &Environment::empty());
+        let actual = expression.evaluate(&alloc, &Context, &Environment::empty());
 
         // Assert
         assert_eq!(expected, actual);
@@ -975,6 +1074,7 @@ mod tests {
             fixed
             (optional 3 1 5)
             (optional 1 3 7))";
+        let alloc = crate::alloc::zero::Allocator::<Cons<Value<Tag>>>::default();
         let expected_order = vec![
             "fixed".to_string(),
             "optional".to_string(),
@@ -1001,7 +1101,7 @@ mod tests {
             expression
                 .clone()
                 .link()
-                .evaluate(&Context, &Environment::empty())
+                .evaluate(&alloc, &Context, &Environment::empty())
                 .expect("evaluates"),
         )
         .expect("serializable");
@@ -1015,7 +1115,7 @@ mod tests {
             expression
                 .clone()
                 .link()
-                .evaluate(&Context, &Environment::empty())
+                .evaluate(&alloc, &Context, &Environment::empty())
                 .expect("evaluates"),
         )
         .expect("serializable");

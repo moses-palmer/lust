@@ -1,4 +1,4 @@
-use crate::{ast, exp};
+use crate::{alloc, ast, exp};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(::serde::Deserialize, ::serde::Serialize))]
@@ -10,6 +10,7 @@ pub enum Tag {
 impl crate::val::Tag for Tag {}
 
 pub type Value<'a> = crate::Value<'a, Tag>;
+pub type Cons<'a> = crate::Cons<'a, Value<'a>>;
 
 pub struct Context;
 pub type Expression = crate::Expression<Command>;
@@ -55,12 +56,17 @@ impl exp::cmd::Command for Command {
         todo!()
     }
 
-    fn evaluate<'a, 'b>(
+    fn evaluate<'a, 'b, A>(
         &self,
         _script: &crate::Script<Self>,
+        _alloc: &A,
         _ctx: &Self::Context,
         _env: &crate::exp::env::Environment<'a, 'b, Self>,
-    ) -> exp::Result<'a, Self> {
+    ) -> exp::Result<'a, Self>
+    where
+        A: alloc::Allocator<'a, Item = Cons<'a>> + 'a,
+        Self::Tag: 'a,
+    {
         todo!()
     }
 }

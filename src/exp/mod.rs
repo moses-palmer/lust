@@ -6,7 +6,7 @@ use std::convert::Infallible;
 
 use thiserror::Error;
 
-use crate::{Value, ast, common::write_list, lambda, val};
+use crate::{Value, alloc, ast, common::write_list, lambda, val};
 
 pub mod cmd;
 pub mod env;
@@ -32,6 +32,9 @@ pub enum Error<'a> {
 
     #[error("invalid invocation: expected {expected} arguments, found {actual}")]
     InvalidInvocation { expected: usize, actual: usize },
+
+    #[error("allocation failure")]
+    Allocation(#[from] alloc::Error),
 }
 
 impl From<Infallible> for Error<'_> {

@@ -2,9 +2,11 @@ use thiserror::Error;
 
 use crate::{
     ast::{self, token::tokenizer::Tokenizer},
+    common::write_list,
     lambda,
 };
 
+pub mod cons;
 pub mod owned;
 
 /// A value operation failed.
@@ -57,6 +59,9 @@ pub enum Value<'a, T> {
 
     /// A reference to a lambda.
     Lambda(lambda::Ref),
+
+    /// A list.
+    List(&'a cons::Cons<'a, Self>),
 }
 
 impl<T> Value<'_, T> {
@@ -81,6 +86,7 @@ impl<T> Value<'_, T> {
             Atom(_) => "atom",
             String(_) => "string",
             Lambda(_) => "lambda",
+            List(_) => "list",
         }
     }
 }
@@ -105,6 +111,11 @@ where
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
             Lambda(v) => write!(f, "<lambda {v}>"),
+            List(v) => {
+                write!(f, "{}", Tokenizer::LEFT_PARENTHESIS)?;
+                write_list(v.iter(), f)?;
+                write!(f, "{}", Tokenizer::RIGHT_PARENTHESIS)
+            }
         }
     }
 }
@@ -147,6 +158,12 @@ where
 impl<T> From<lambda::Ref> for Value<'_, T> {
     fn from(value: lambda::Ref) -> Self {
         Value::Lambda(value)
+    }
+}
+
+impl<'a, T> From<&'a cons::Cons<'a, Value<'a, T>>> for Value<'a, T> {
+    fn from(value: &'a cons::Cons<'a, Value<'a, T>>) -> Self {
+        Value::List(value)
     }
 }
 
@@ -290,6 +307,9 @@ unwrap!(&'a ast::Node {
 });
 unwrap!(lambda::Ref {
     Lambda(v) => v,
+});
+unwrap!(&'a cons::Cons<'a, Value<'a, T>> {
+    List(v) => v,
 });
 
 /// Generates an implementation for an operation for [`Value`].
