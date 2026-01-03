@@ -1,4 +1,5 @@
 use crate::ast::{self, token::tokenizer::Tokenizer};
+use crate::common::write_list;
 
 /// An owned value.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,6 +27,9 @@ pub enum Value<T> {
 
     /// A string.
     String(String),
+
+    /// A list.
+    List(Vec<Self>),
 }
 
 impl<T> ::std::fmt::Display for Value<T>
@@ -56,6 +60,11 @@ where
             ),
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
+            List(v) => {
+                write!(f, "{}", Tokenizer::LEFT_PARENTHESIS)?;
+                write_list(v.iter(), f)?;
+                write!(f, "{}", Tokenizer::RIGHT_PARENTHESIS)
+            }
         }
     }
 }
@@ -76,6 +85,10 @@ where
             Number(v) => Ok(super::Value::Number(*v)),
             Atom(v) => Ok(super::Value::Atom(v)),
             String(v) => Ok(super::Value::String(v)),
+            _ => Err(super::Error::Conversion {
+                from_type: "owned",
+                to_type: "value",
+            }),
         }
     }
 }
@@ -108,6 +121,33 @@ where
             Atom(v) => Self::Atom(v.to_string()),
             String(v) => Self::String(v.to_string()),
             Lambda(_) => return Err(super::Error::Operation("cannot serialize lambda")),
+            List(v) => v
+                .iter()
+                .map(Self::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self::List)?,
         })
+    }
+}
+
+impl<T> From<Vec<Value<T>>> for Value<T> {
+    fn from(value: Vec<Value<T>>) -> Self {
+        Self::List(value)
+    }
+}
+
+impl<T> TryFrom<Vec<super::Value<'_, T>>> for Value<T>
+where
+    T: super::Tag,
+{
+    type Error = super::Error;
+
+    fn try_from(value: Vec<super::Value<T>>) -> Result<Self, Self::Error> {
+        Ok(Self::List(
+            value
+                .into_iter()
+                .map(Self::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 }

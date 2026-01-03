@@ -1,4 +1,4 @@
-use crate::{Command, Environment, Expression, Value, exp};
+use crate::{Command, Cons, Environment, Expression, Value, alloc, exp};
 
 /// A callable expression.
 #[derive(Clone, Debug, PartialEq)]
@@ -33,14 +33,20 @@ where
     ///
     /// # Arguments
     /// *  `script` - The linked script.
+    /// *  `alloc` - The allocator to use.
     /// *  `ctx` - The evaluation context.
     /// *  `arguments` - The arguments to pass.
-    pub fn invoke<'a>(
+    pub fn invoke<'a, A>(
         &'a self,
         script: &'a crate::Script<C>,
+        alloc: &A,
         ctx: &C::Context,
         arguments: &[Value<'a, C::Tag>],
-    ) -> exp::Result<'a, C> {
+    ) -> exp::Result<'a, C>
+    where
+        A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
+        <C as Command>::Tag: 'a,
+    {
         if self.arguments.len() != arguments.len() {
             Err(exp::Error::InvalidInvocation {
                 expected: self.arguments.len(),
@@ -49,6 +55,7 @@ where
         } else {
             script.value(
                 &self.expression,
+                alloc,
                 ctx,
                 &Environment::empty().with_scope(self.arguments.as_slice(), arguments),
             )
@@ -119,6 +126,7 @@ mod tests {
     fn invoke_too_few_arguments() {
         // Arrange
         let script = Default::default();
+        let alloc = crate::alloc::zero::Allocator::<Cons>::default();
         let tested = Lambda {
             arguments: vec!["a".into(), "b".into()],
             expression: Expression::Number(42.0),
@@ -129,7 +137,7 @@ mod tests {
         });
 
         // Act
-        let actual = tested.invoke(&script, &Context, &[Value::Void]);
+        let actual = tested.invoke(&script, &alloc, &Context, &[Value::Void]);
 
         // Assert
         assert_eq!(expected, actual);
@@ -139,6 +147,7 @@ mod tests {
     fn invoke_too_many_arguments() {
         // Arrange
         let script = Default::default();
+        let alloc = crate::alloc::zero::Allocator::<Cons>::default();
         let tested = Lambda {
             arguments: vec!["a".into()],
             expression: Expression::Number(42.0),
@@ -149,7 +158,7 @@ mod tests {
         });
 
         // Act
-        let actual = tested.invoke(&script, &Context, &[Value::Void, Value::Void]);
+        let actual = tested.invoke(&script, &alloc, &Context, &[Value::Void, Value::Void]);
 
         // Assert
         assert_eq!(expected, actual);
@@ -159,6 +168,7 @@ mod tests {
     fn invoke() {
         // Arrange
         let script = Default::default();
+        let alloc = crate::alloc::zero::Allocator::<Cons>::default();
         let tested = Lambda {
             arguments: vec!["a".into()],
             expression: Expression::Number(42.0),
@@ -166,7 +176,7 @@ mod tests {
         let expected = Ok((42.0).into());
 
         // Act
-        let actual = tested.invoke(&script, &Context, &[Value::Void]);
+        let actual = tested.invoke(&script, &alloc, &Context, &[Value::Void]);
 
         // Assert
         assert_eq!(expected, actual);
