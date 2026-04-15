@@ -3,9 +3,50 @@
 //! The [`Command`] trait is the means to have a script execute anything; its
 //! [`evalue`](Command::evaluate) method is the entry point into native code.
 
+use std::sync::atomic::{AtomicIsize, Ordering};
+
 use crate::{Script, Serializable, alloc, ast};
 
 use super::{Error, Expression, Result, env::Environment};
+
+/// The context for a command evaluation.
+pub trait Context {
+    /// Evaluation of a single expression is about to begin.
+    ///
+    /// If an error is returned, evaluation is stopped and the error bubbles up.
+    ///
+    /// This will be called every time a subexpression is evaluated or a command is executed.
+    fn on_evaluate<'a>(&self) -> ::std::result::Result<(), Error<'a>> {
+        Ok(())
+    }
+}
+
+impl Context for () {}
+
+/// A context that constrains resources for evaluation.
+///
+/// Each evaluation decrements a counter, and once it reaches 0, an error is returned.
+pub struct ResourceConstrainer(AtomicIsize);
+
+impl From<isize> for ResourceConstrainer {
+    fn from(value: isize) -> Self {
+        Self(AtomicIsize::from(value))
+    }
+}
+
+impl Context for ResourceConstrainer {
+    fn on_evaluate<'a>(&self) -> ::std::result::Result<(), Error<'a>> {
+        // We use an atomic isize just to enable mutability for a shared reference, not for
+        // concurrency, so relaxed ordering is enough
+        let previous = self.0.fetch_sub(1, Ordering::Relaxed);
+
+        if previous <= 0 {
+            Err(Error::ExecutionLimited)
+        } else {
+            Ok(())
+        }
+    }
+}
 
 /// A in command for a script.
 pub trait Command:
@@ -15,7 +56,7 @@ pub trait Command:
     type Tag: crate::val::Tag;
 
     /// The context passed when evaluating a command.
-    type Context;
+    type Context: Context;
 
     /// The name of this command.
     fn name(&self) -> &'static str;
