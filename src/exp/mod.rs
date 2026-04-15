@@ -35,6 +35,9 @@ pub enum Error<'a> {
 
     #[error("allocation failure")]
     Allocation(#[from] alloc::Error),
+
+    #[error("no more executions permitted")]
+    ExecutionLimited,
 }
 
 impl From<Infallible> for Error<'_> {

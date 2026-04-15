@@ -49,6 +49,65 @@ macro_rules! fail {
 /// struct Context;
 /// impl lust::Context for Context {}
 ///
+/// // The context can control evaluation; using `ContrainedCommands`, which has `AtomicIsize` as
+/// // its context type, will yield an error if the expression is too complex
+/// lust::commands_all! {
+///     enum ConstrainedCommands<
+///         Tag = Tag,
+///         Context = lust::exp::cmd::ResourceConstrainer,
+///     > { }
+/// }
+///
+/// fn constrain(resources: isize, script: &str) -> Result<val::owned::Value<Tag>, eval::Error> {
+///     let ast = ast::parse(&mut ast::tokenize(script))
+///         .map_err(eval::Error::from)?;
+///     let script = Expression::<ConstrainedCommands>::try_from(&ast)?.link();
+///     let alloc = alloc::bounded::Allocator::<128, _>::default();
+///     script.evaluate(&alloc, &resources.into(), &Environment::empty())
+///         .map_err(eval::Error::from)
+/// }
+///
+/// assert_eq!(
+///     constrain(4, r"
+///         ; One to evaluate the root
+///         (
+///             ; One to evaluate the + command, and one for each argument
+///             + 1 2 3)"),
+///     Err(eval::Error::Eval("no more executions permitted".into())),
+/// );
+/// assert_eq!(
+///     constrain(5, r"
+///         ; One to evaluate the root
+///         (
+///             ; One to evaluate the + command, and one for each argument
+///             + 1 2 3)"),
+///     Ok((1 + 2 + 3).into()),
+/// );
+/// assert_eq!(
+///     constrain(23, r"
+///         (let
+///             (
+///                 (f (lambda (a b) (
+///                     (+ a b b)))))
+///             (
+///                 (f 1 2)
+///                 (f 1 2)
+///             ))"),
+///     Err(eval::Error::Eval("no more executions permitted".into())),
+/// );
+/// assert_eq!(
+///     constrain(24, r"
+///         (let
+///             (
+///                 (f (lambda (a b) (
+///                     (+ a b b)))))
+///             (
+///                 (f 1 2)
+///                 (f 1 2)
+///             ))"),
+///     Ok((1 + 2 + 2).into()),
+/// );
+///
 /// lust::commands_all! {
 ///     enum Commands<
 ///         Tag = Tag,
