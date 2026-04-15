@@ -136,6 +136,12 @@ where
     }
 }
 
+impl<T> From<()> for Value<T> {
+    fn from(_value: ()) -> Self {
+        Self::Void
+    }
+}
+
 impl<T> From<Vec<Value<T>>> for Value<T> {
     fn from(value: Vec<Value<T>>) -> Self {
         Self::List(value)
