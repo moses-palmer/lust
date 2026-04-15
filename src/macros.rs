@@ -197,6 +197,11 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(if (= 1 2) 1)" => Commands),
+///     ().into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(< 1 2)" => Commands),
 ///     (1 < 2).into(),
 /// );
@@ -797,12 +802,26 @@ macro_rules! commands {
             ),*> impl ( $($rest_features),* ) {
                 /// Evaluate expressions conditionally.
                 ///
+                /// The `false` value is optional; if not provided, this command returns `void`.
+                ///
                 /// # Examples
                 /// ```lisp
                 /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
                 /// ```
-                "if" => If(ctx, cond: bool, if_true, if_false) {
-                    ctx.value(if cond { if_true } else { if_false })
+                "if" => If(
+                    ctx,
+                    cond: bool,
+                    if_true,
+                    ...if_false => |_ctx, _node, a| {
+                        // Either we return the third argument or nil on false
+                        match a.len() {
+                            2 => Ok(Expression::<Self>::Void),
+                            3 => Ok(a.pop().unwrap()),
+                            _ => Err(Error::Syntax { message: "at most one else clause expected" }),
+                        }
+                    },
+                ) {
+                    ctx.value(if cond { if_true } else { if_false.next().unwrap() })
                 }
 
                 $($rest)*
