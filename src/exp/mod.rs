@@ -76,6 +76,9 @@ impl ParseContext {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum Expression<C> {
+    /// Nothing
+    Void,
+
     /// A list of expressions.
     List(Vec<Self>),
 
@@ -303,11 +306,12 @@ impl<C> Default for Expression<C> {
 
 impl<C> ::std::fmt::Display for Expression<C>
 where
-    C: ::std::fmt::Display,
+    C: cmd::Command + ::std::fmt::Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Expression::*;
         match self {
+            Void => write!(f, "{}", Value::<C::Tag>::Void),
             List(v) => write_list(v.iter(), f),
             Map(v, _) => write_list(v.iter(), f),
             AST(v) => write!(f, "{v}"),
