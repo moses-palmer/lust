@@ -19,7 +19,12 @@ mod val;
 
 pub use common::Serializable;
 
-pub use exp::{Expression, cmd::Command, env::Environment, linked::Script};
+pub use exp::{
+    Expression,
+    cmd::{Command, Context},
+    env::Environment,
+    linked::Script,
+};
 pub use val::{Value, Values, cons::Cons};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -27,11 +32,9 @@ pub use val::{Value, Values, cons::Cons};
 struct Tag;
 impl val::Tag for Tag {}
 
-struct Context;
-
 commands_all! {
     enum C<
-        Context = Context,
+        Context = (),
         Tag = Tag,
     > {
         "debug" => Debug(script, alloc, ctx, env, expression) {
@@ -103,7 +106,7 @@ where
             }
         };
         let alloc = alloc::bounded::Allocator::<128, _>::default();
-        let ctx = Context;
+        let ctx = ();
 
         match script.evaluate(&alloc, &ctx, &Environment::empty()) {
             Ok(value) => println!("= {}", value),
@@ -119,7 +122,7 @@ fn repl() -> Result<(), String> {
         .map_err(|e| format!("failed to create line reader: {e}"))?;
 
     while let Ok(line) = rl.readline("> ") {
-        let ctx = Context;
+        let ctx = ();
         match compile(&line).map(Expression::link).and_then(|script| {
             let alloc = alloc::bounded::Allocator::<128, _>::default();
             script

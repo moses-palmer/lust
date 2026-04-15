@@ -7,6 +7,11 @@ use crate::{Script, Serializable, alloc, ast};
 
 use super::{Error, Expression, Result, env::Environment};
 
+/// The context for a command evaluation.
+pub trait Context {}
+
+impl Context for () {}
+
 /// A in command for a script.
 pub trait Command:
     Clone + ::std::fmt::Debug + ::std::fmt::Display + PartialEq + Serializable
@@ -15,7 +20,7 @@ pub trait Command:
     type Tag: crate::val::Tag;
 
     /// The context passed when evaluating a command.
-    type Context;
+    type Context: Context;
 
     /// The name of this command.
     fn name(&self) -> &'static str;
