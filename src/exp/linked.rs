@@ -101,6 +101,7 @@ where
 
         use super::Expression::*;
         match e {
+            Void => Ok(Value::Void),
             List(v) => {
                 let mut i = v.iter();
                 if let Some(head) = i.next() {
@@ -204,7 +205,7 @@ where
 
 impl<C> ::std::fmt::Display for Script<C>
 where
-    C: ::std::fmt::Display,
+    C: Command + ::std::fmt::Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.root.fmt(f)
