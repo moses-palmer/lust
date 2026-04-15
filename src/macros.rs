@@ -43,9 +43,11 @@ macro_rules! fail {
 /// enum Tag {}
 /// impl lust::val::Tag for Tag {}
 ///
-/// // The context can be anything, but in order to use the eval! macro, it must implement Default
+/// // The context can be anything implementing lust::exp::cmd::Context, but in order to use the
+/// // eval! macro, it must implement Default
 /// #[derive(Default)]
 /// struct Context;
+/// impl lust::Context for Context {}
 ///
 /// lust::commands_all! {
 ///     enum Commands<

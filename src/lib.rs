@@ -33,5 +33,10 @@ pub(crate) mod common;
 pub use common::Serializable;
 
 pub use alloc::Allocator;
-pub use exp::{Expression, cmd::Command, env::Environment, linked::Script};
+pub use exp::{
+    Expression,
+    cmd::{Command, Context},
+    env::Environment,
+    linked::Script,
+};
 pub use val::{Value, Values, cons::Cons};

@@ -13,6 +13,9 @@ pub type Value<'a> = crate::Value<'a, Tag>;
 pub type Cons<'a> = crate::Cons<'a, Value<'a>>;
 
 pub struct Context;
+
+impl crate::Context for Context {}
+
 pub type Expression = crate::Expression<Command>;
 
 #[derive(Clone, Debug, PartialEq)]
