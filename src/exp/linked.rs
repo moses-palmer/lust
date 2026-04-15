@@ -1,4 +1,4 @@
-use crate::{Command, Cons, Environment, Value, Values, alloc, lambda, val};
+use crate::{Command, Cons, Context, Environment, Value, Values, alloc, lambda, val};
 
 /// A linked expression.
 #[derive(Clone, Debug)]
@@ -52,6 +52,8 @@ where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
     {
+        ctx.on_evaluate()?;
+
         use super::Expression::*;
         match e {
             List(v) => {
@@ -81,7 +83,10 @@ where
             Boolean(v) => Ok((*v).into()),
             Number(v) => Ok((*v).into()),
             String(v) => Ok(v.as_str().into()),
-            Command(v) => v.evaluate(self, alloc, ctx, env),
+            Command(v) => {
+                ctx.on_evaluate()?;
+                v.evaluate(self, alloc, ctx, env)
+            }
             LambdaDef(_) => Err(val::Error::Operation("cannot evaluate lambda").into()),
             LambdaRef(v) => Ok((*v).into()),
         }
