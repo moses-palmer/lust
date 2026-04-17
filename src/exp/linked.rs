@@ -147,7 +147,7 @@ where
     /// *  `ctx` - The evaluation context.
     /// *  `lambda_ref` - A reference to the lambda to evaluate.
     /// *  `arguments` - The arguments to pass.
-    fn invoke<'a, A>(
+    pub fn invoke<'a, A>(
         &'a self,
         alloc: &A,
         ctx: &C::Context,
