@@ -267,6 +267,11 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(!= 1 2)" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(>= 2 1)" => Commands),
 ///     (2 >= 1).into(),
 /// );
@@ -1051,6 +1056,16 @@ macro_rules! commands {
                 /// ```
                 "=" => Eq(_ctx, a: Value, b: Value) {
                     Ok((a == b).into())
+                }
+
+                /// Check whether `a != b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (!= 1 2) ; true
+                /// ```
+                "!=" => Neq(_ctx, a: Value, b: Value) {
+                    Ok((a != b).into())
                 }
 
                 /// Check whether `a >= b`.
