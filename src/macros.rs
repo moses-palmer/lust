@@ -118,24 +118,24 @@ macro_rules! tag {
 ///     Ok((1 + 2 + 3).into()),
 /// );
 /// assert_eq!(
-///     constrain(23, r"
+///     constrain(26, r"
 ///         (let
 ///             (
-///                 (f (lambda (a b) (
+///                 (f (lambda (a b) (do
 ///                     (+ a b b)))))
-///             (
+///             (do
 ///                 (f 1 2)
 ///                 (f 1 2)
 ///             ))"),
 ///     Err(eval::Error::Eval("no more executions permitted".into())),
 /// );
 /// assert_eq!(
-///     constrain(24, r"
+///     constrain(27, r"
 ///         (let
 ///             (
-///                 (f (lambda (a b) (
+///                 (f (lambda (a b) (do
 ///                     (+ a b b)))))
-///             (
+///             (do
 ///                 (f 1 2)
 ///                 (f 1 2)
 ///             ))"),
@@ -676,6 +676,70 @@ macro_rules! commands {
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
         ),* $(,)?>
+        impl ( control $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Sequentially evaluate a list of expressions and return the last value
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (do 1 2 3) ; 3
+                /// ```
+                "do" => Do(
+                    ctx,
+                    ...expressions,
+                ) {
+                    expressions
+                        .fold(
+                            Ok(Value::NIL),
+                            |acc, e| {
+                                acc?;
+                                ctx.value(e)
+                            },
+                        )
+                }
+
+                /// Evaluate expressions conditionally.
+                ///
+                /// The `false` value is optional; if not provided, this command returns `void`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
+                /// ```
+                "if" => If(
+                    ctx,
+                    cond: bool,
+                    if_true,
+                    ...if_false => |_ctx, _node, a| {
+                        // Either we return the third argument or nil on false
+                        match a.len() {
+                            2 => Ok(Expression::<Self>::Void),
+                            3 => Ok(a.pop().unwrap()),
+                            _ => Err(Error::Syntax { message: "at most one else clause expected" }),
+                        }
+                    },
+                ) {
+                    ctx.value(if cond { if_true } else { if_false.next().unwrap() })
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
         impl ( let $(, $rest_features:ident)* )
         {
             $($rest:tt)*
@@ -779,50 +843,6 @@ macro_rules! commands {
 
                         Ok(Expression::LambdaDef(vec![lambda::Lambda::new(argument_count, body)]))
                     })
-
-                $($rest)*
-            }
-        }
-    };
-
-    (
-        $(#[$struct_meta:meta])*
-        $enum_vis:vis enum $name:ident<$(
-            $associated_type:ident = $concrete_type:ty
-        ),* $(,)?>
-        impl ( if $(, $rest_features:ident)* )
-        {
-            $($rest:tt)*
-        }
-    ) => {
-        $crate::commands! {
-            $(#[$struct_meta])*
-            $enum_vis enum $name<$(
-                $associated_type = $concrete_type
-            ),*> impl ( $($rest_features),* ) {
-                /// Evaluate expressions conditionally.
-                ///
-                /// The `false` value is optional; if not provided, this command returns `void`.
-                ///
-                /// # Examples
-                /// ```lisp
-                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
-                /// ```
-                "if" => If(
-                    ctx,
-                    cond: bool,
-                    if_true,
-                    ...if_false => |_ctx, _node, a| {
-                        // Either we return the third argument or nil on false
-                        match a.len() {
-                            2 => Ok(Expression::<Self>::Void),
-                            3 => Ok(a.pop().unwrap()),
-                            _ => Err(Error::Syntax { message: "at most one else clause expected" }),
-                        }
-                    },
-                ) {
-                    ctx.value(if cond { if_true } else { if_false.next().unwrap() })
-                }
 
                 $($rest)*
             }
@@ -976,7 +996,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( arithmetic, let, lambda, if, cmp, list ) {
+            ),*> impl ( control, arithmetic, let, lambda, cmp, list ) {
                 $($rest)*
             }
         }
