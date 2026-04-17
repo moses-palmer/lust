@@ -182,6 +182,26 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(mod 9 4)" => Commands),
+///     1.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(abs -2)" => Commands),
+///     2.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(min 1 2 3)" => Commands),
+///     1.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(max 1 2 3)" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(let ((a 1) (b 2)) (+ a b 3))" => Commands),
 ///     (1 + 2 + 3).into(),
 /// );
@@ -662,6 +682,58 @@ macro_rules! commands {
                                 $crate::fail!("division by zero");
                             }
                         }
+                    )
+                    .map(Value::from)
+                }
+
+                /// Calculates _a (mod) b_.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (mod 9 4) ; 1
+                /// ```
+                "mod" => Mod(_ctx, a: f32, b: f32) {
+                    if b != 0.0 {
+                        Ok((a % b).into())
+                    } else {
+                        $crate::fail!("division by zero");
+                    }
+                }
+
+                /// Calculates the absolute of a value.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (abs -2) ; 2
+                /// ```
+                "abs" => Abs(_ctx, a: f32) {
+                    Ok(a.abs().into())
+                }
+
+                /// Calculates the minimum value.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (min 1 2 3) ; 1
+                /// ```
+                "min" => Min(ctx, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc?.min(f32::try_from(ctx.value(i)?)?))
+                    )
+                    .map(Value::from)
+                }
+
+                /// Calculates the maximum value.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (max 1 2 3) ; 3
+                /// ```
+                "max" => Max(ctx, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc?.max(f32::try_from(ctx.value(i)?)?))
                     )
                     .map(Value::from)
                 }
