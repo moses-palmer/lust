@@ -344,11 +344,14 @@ pub(crate) mod tests {
     fn multiple_atoms() {
         // Arrange
         let input = "hello
-            world -again";
+            world -again != hello? world!";
         let expected = vec![
             atom(pos(1, 1), "hello"),
             atom(pos(2, 13), "world"),
             atom(pos(2, 19), "-again"),
+            atom(pos(2, 26), "!="),
+            atom(pos(2, 29), "hello?"),
+            atom(pos(2, 36), "world!"),
         ];
 
         // Act
