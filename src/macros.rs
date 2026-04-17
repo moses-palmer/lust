@@ -296,6 +296,46 @@ macro_rules! tag {
 ///     vec![2.into(), 3.into(), 5.into(), 8.into()].into(),
 /// );
 ///
+/// assert_eq!(
+///     eval!("(cons 1 2)" => Commands),
+///     vec![1.0.into(), 2.0.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(cons 1 (list 2 3 4))" => Commands),
+///     vec![1.0.into(), 2.0.into(), 3.0.into(), 4.0.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(null? (list 1 2))" => Commands),
+///     false.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(null? (list))" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(length (list 1 2 3))" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(length (list))" => Commands),
+///     0.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3))" => Commands),
+///     6.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 (list))" => Commands),
+///     0.0.into(),
+/// );
+///
 /// # Ok(())
 /// # }
 /// ```
@@ -1147,6 +1187,71 @@ macro_rules! commands {
                 /// ```
                 "cdr" => Cdr(_ctx, cons: &'a Cons<'a>) {
                     Ok(cons.cdr().next().map(Into::into).unwrap_or(Value::NIL))
+                }
+
+                /// Prepends a value to a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (cons 1 2) ; (1 2)
+                /// (cons 1 '(2 3 4)) ; (1 2 3 4)
+                /// ```
+                "cons" => Cons(ctx, car: Value, cdr: Value) {
+                    let cons = if let Value::List(cons) = cdr {
+                        cons
+                    } else {
+                        ctx.alloc(Cons::single(cdr))?
+                    };
+                    Ok(ctx.alloc(cons.prepend(car))?.into())
+                }
+
+                /// Determines whether a list is empty.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (null? (list)) ; true
+                /// (null? (list 1)) ; false
+                /// ```
+                "null?" => Null(_ctx, value: Value) {
+                    match value {
+                        Value::Void => Ok(true.into()),
+                        Value::List(_) => Ok(false.into()),
+                        _ => $crate::fail!("expected a list"),
+                    }
+                }
+
+                /// The length of a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (length (list 1 2 3)) ; 3
+                /// (length (list)) ; 0
+                /// ```
+                "length" => Length(_ctx, value: Value) {
+                    match value {
+                        Value::List(cons) => Ok((cons.iter().count() as f32).into()),
+                        Value::Void => Ok(0.0f32.into()),
+                        _ => $crate::fail!("expected a list"),
+                    }
+                }
+
+                /// Left fold over a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3)) ; 6
+                /// ```
+                "foldl" => Foldl(ctx, lambda: Lambda, init: Value, list: Value) {
+                    match list {
+                        Value::List(cons) => {
+                            cons.iter().try_fold(init, |acc, elem| ctx.script
+                                .invoke(ctx.alloc, ctx.ctx, lambda, &[acc, *elem])
+                                .unwrap_or_else(|| $crate::fail!("unknown lambda")),
+                            )
+                        }
+                        Value::Void => Ok(init),
+                        _ => $crate::fail!("expected a list"),
+                    }
                 }
 
                 $($rest)*
