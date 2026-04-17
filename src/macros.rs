@@ -202,6 +202,21 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(or false false true)" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(and true true false)" => Commands),
+///     false.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(xor true true false true)" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(let ((a 1) (b 2)) (+ a b 3))" => Commands),
 ///     (1 + 2 + 3).into(),
 /// );
@@ -812,6 +827,78 @@ macro_rules! commands {
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
         ),* $(,)?>
+        impl ( boolean $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// _¬a_
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (not false) ; true
+                /// ```
+                "not" => Not(_ctx, a: bool) {
+                    Ok((!a).into())
+                }
+
+                /// _a ⋀ ..._
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (and true true false) ; false
+                /// ```
+                "and" => And(ctx, a: bool, ...values) {
+                    values.fold(
+                        Ok(a),
+                        |acc, e| Ok(acc? && bool::try_from(ctx.value(e)?)?),
+                    )
+                    .map(Value::from)
+                }
+
+                /// _a ⋁ ..._
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (or false false true) ; true
+                /// ```
+                "or" => Or(ctx, a: bool, ...values) {
+                    values.fold(
+                        Ok(a),
+                        |acc, e| Ok(acc? || bool::try_from(ctx.value(e)?)?),
+                    )
+                    .map(Value::from)
+                }
+
+                /// _a ⊕ ..._
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (xor true true false true) ; true
+                /// ```
+                "xor" => Xor(ctx, a: bool, ...values) {
+                    values.fold(
+                        Ok(a),
+                        |acc, e| Ok(acc? ^ bool::try_from(ctx.value(e)?)?),
+                    )
+                    .map(Value::from)
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
         impl ( let $(, $rest_features:ident)* )
         {
             $($rest:tt)*
@@ -1068,7 +1155,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( control, arithmetic, let, lambda, cmp, list ) {
+            ),*> impl ( boolean, control, arithmetic, let, lambda, cmp, list ) {
                 $($rest)*
             }
         }
