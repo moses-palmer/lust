@@ -113,7 +113,7 @@ where
                         self.invoke(alloc, ctx, lambda_ref, &arguments)
                             .unwrap_or_else(|| Err(val::Error::Operation("unknown lambda").into()))
                     } else {
-                        i.try_fold(head, |_, e| self.value(e, alloc, ctx, env))
+                        Err(val::Error::Operation("cannot evaluate list").into())
                     }
                 } else {
                     Ok(Value::NIL)
