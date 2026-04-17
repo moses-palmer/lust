@@ -146,13 +146,11 @@ where
                 Tree(v) if !v.is_empty() => {
                     let (head, tail) = (&v[0], &v[1..]);
                     C::parse(context, head, tail).or_else(|e| match e {
-                        Error::UnknownReference { .. } | Error::Eval { .. } => {
-                            Ok(Expression::List(
-                                v.iter()
-                                    .map(|n| Expression::parse(context, n))
-                                    .collect::<::std::result::Result<Vec<_>, _>>()?,
-                            ))
-                        }
+                        Error::UnknownReference { .. } => Ok(Expression::List(
+                            v.iter()
+                                .map(|n| Expression::parse(context, n))
+                                .collect::<::std::result::Result<Vec<_>, _>>()?,
+                        )),
                         _ => Err(e),
                     })
                 }
