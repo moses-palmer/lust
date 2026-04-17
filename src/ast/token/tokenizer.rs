@@ -477,7 +477,7 @@ pub(crate) enum AtomTokenizer {
 impl AtomTokenizer {
     /// Valid non-alphabetic characters for the start of atoms.
     pub const VALID_NON_ALPHABETIC: &'static [char] =
-        &['+', '-', '*', '/', '_', '?', '=', '<', '>'];
+        &['+', '-', '*', '/', '_', '!', '?', '=', '<', '>'];
 
     /// Consumes a single character from the input.
     ///
