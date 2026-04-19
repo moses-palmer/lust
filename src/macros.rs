@@ -744,6 +744,9 @@ macro_rules! commands {
                 ///
                 /// To later invoke the lambda, bind it to a variable using `let`.
                 ///
+                /// A lambda does not capture its environment; the only variables available are
+                /// the arguments.
+                ///
                 /// # Examples
                 /// ```lisp
                 /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
