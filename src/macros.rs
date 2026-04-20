@@ -52,6 +52,7 @@ macro_rules! fail {
 /// // The context can control evaluation; using `ContrainedCommands`, which has `AtomicIsize` as
 /// // its context type, will yield an error if the expression is too complex
 /// lust::commands_all! {
+///     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 ///     enum ConstrainedCommands<
 ///         Tag = Tag,
 ///         Context = lust::exp::cmd::ResourceConstrainer,
@@ -109,6 +110,7 @@ macro_rules! fail {
 /// );
 ///
 /// lust::commands_all! {
+///     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 ///     enum Commands<
 ///         Tag = Tag,
 ///         Context = Context,
@@ -286,7 +288,6 @@ macro_rules! commands {
     ) => {
         $(#[$struct_meta])*
         #[derive(Clone, Debug, PartialEq)]
-        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
         #[doc = "# Commands"]
         $(
             #[doc = concat!(
@@ -937,6 +938,7 @@ mod tests {
     };
 
     commands_all! {
+        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
         pub enum Command<
             Tag = Tag,
             Context = Context,

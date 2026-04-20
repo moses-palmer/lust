@@ -33,6 +33,7 @@ struct Tag;
 impl val::Tag for Tag {}
 
 commands_all! {
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     enum C<
         Context = (),
         Tag = Tag,
