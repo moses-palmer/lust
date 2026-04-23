@@ -492,6 +492,12 @@ macro_rules! commands {
                 type Tag = <$name as $crate::Command>::Tag;
 
                 #[allow(unused)]
+                type ASTNode<'a> = &'a $crate::ast::Node;
+                #[allow(unused)]
+                type ASTKind<'a> = $crate::ast::NodeValue;
+                #[allow(unused)]
+                type ASTValue<'a> = $crate::ast::Value;
+                #[allow(unused)]
                 type Cons<'a> = $crate::Cons<'a, Value<'a>>;
                 #[allow(unused)]
                 type Lambda = $crate::lambda::Ref;
