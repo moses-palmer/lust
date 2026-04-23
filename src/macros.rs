@@ -28,6 +28,37 @@ macro_rules! fail {
     };
 }
 
+/// Defines a type as a tag for values.
+///
+/// This macto also implements converting from a value of the tag type to the tag type itself.
+#[macro_export]
+macro_rules! tag {
+    ($name:ty) => {
+        impl $crate::val::Tag for $name {}
+
+        impl From<$name> for $crate::val::Value<'_, $name> {
+            fn from(value: $name) -> Self {
+                $crate::val::Value::Tag(value)
+            }
+        }
+
+        impl TryFrom<$crate::val::Value<'_, $name>> for $name {
+            type Error = $crate::val::Error;
+
+            fn try_from(value: $crate::val::Value<'_, Tag>) -> Result<Self, Self::Error> {
+                use $crate::val::Value::*;
+                match value {
+                    Tag(tag) => Ok(tag),
+                    _ => Err($crate::val::Error::Conversion {
+                        from_type: value.type_name(),
+                        to_type: "tag",
+                    }),
+                }
+            }
+        }
+    };
+}
+
 /// Defines a collection of built-in commands.
 ///
 /// This macro is used to define the generic type for an executable
@@ -41,7 +72,7 @@ macro_rules! fail {
 /// #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 /// #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 /// enum Tag {}
-/// impl lust::val::Tag for Tag {}
+/// lust::tag!(Tag);
 ///
 /// // The context can be anything implementing lust::exp::cmd::Context, but in order to use the
 /// // eval! macro, it must implement Default
