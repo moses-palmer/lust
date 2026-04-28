@@ -206,6 +206,17 @@ impl Node {
         }
     }
 
+    /// The length of this node.
+    ///
+    /// This does not include child nodes
+    #[inline]
+    pub fn len(&self) -> usize {
+        match &self.value {
+            NodeValue::Leaf(_) => 1,
+            NodeValue::Tree(nodes) => nodes.len(),
+        }
+    }
+
     /// The position.
     #[inline]
     pub fn position(&self) -> &Position {
