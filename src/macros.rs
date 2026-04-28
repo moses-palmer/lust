@@ -98,8 +98,7 @@ macro_rules! tag {
 ///         &ast,
 ///     )?.link();
 ///     let alloc = alloc::bounded::Allocator::<128, _>::default();
-///     script.evaluate(&alloc, &resources.into(), &Environment::empty())
-///         .map_err(eval::Error::from)
+///     script.evaluate(&alloc, &resources.into()).map_err(eval::Error::from)
 /// }
 ///
 /// assert_eq!(
@@ -931,7 +930,7 @@ macro_rules! commands_all {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Cons, Environment, Expression, Value, ast,
+        Cons, Expression, Value, ast,
         exp::Error,
         test_helpers::{Context, Tag},
         val::owned,
@@ -1015,7 +1014,7 @@ mod tests {
         let expression = Expression::<Command>::parse(&mut Default::default(), &ast)
             .expect("compiles")
             .link();
-        let actual = expression.evaluate(&alloc, &Context, &Environment::empty());
+        let actual = expression.evaluate(&alloc, &Context);
 
         // Assert
         assert_eq!(expected, actual);
@@ -1165,7 +1164,7 @@ mod tests {
             expression
                 .clone()
                 .link()
-                .evaluate(&alloc, &Context, &Environment::empty())
+                .evaluate(&alloc, &Context)
                 .expect("evaluates"),
         )
         .expect("serializable");
@@ -1179,7 +1178,7 @@ mod tests {
             expression
                 .clone()
                 .link()
-                .evaluate(&alloc, &Context, &Environment::empty())
+                .evaluate(&alloc, &Context)
                 .expect("evaluates"),
         )
         .expect("serializable");
