@@ -242,70 +242,147 @@ where
     where
         D: serde::de::Deserializer<'de>,
     {
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "lowercase")]
-        enum Field {
-            Root,
-            Lambdas,
-        }
-        struct ScriptVisitor<C>(::std::marker::PhantomData<C>);
-
-        impl<'de, C> serde::de::Visitor<'de> for ScriptVisitor<C>
-        where
-            C: Command,
-        {
-            type Value = Script<C>;
-
-            fn expecting(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                formatter.write_str("String")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(v.parse().map_err(|e| E::custom(e))?)
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                println!("Deserializing Script from map");
-
-                let mut root = None;
-                let mut lambdas = None;
-                while let Some(key) = map.next_key::<Field>()? {
-                    match key {
-                        Field::Root => {
-                            if root.replace(map.next_value()?).is_some() {
-                                return Err(serde::de::Error::duplicate_field("root"));
-                            }
-                        }
-                        Field::Lambdas => {
-                            if lambdas.replace(map.next_value()?).is_some() {
-                                return Err(serde::de::Error::duplicate_field("lambdas"));
-                            }
-                        }
-                    }
-                }
-
-                match (root, lambdas) {
-                    (Some(root), Some(lambdas)) => Ok(Script { root, lambdas }),
-                    (Some(root), None) => Ok(Script {
-                        root,
-                        lambdas: lambda::Store::default(),
-                    }),
-                    (None, _) => Err(serde::de::Error::missing_field("root")),
-                }
-            }
-        }
-
         deserializer.deserialize_any(ScriptVisitor(Default::default()))
     }
 }
 
-#[cfg(all(test, feature = "serde"))]
+/// A stand-alone function.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Function<C>
+where
+    C: Command,
+{
+    /// The main script.
+    script: Script<C>,
+
+    /// The main function.
+    main: lambda::Ref,
+}
+
+impl<C> Function<C>
+where
+    C: Command,
+{
+    /// Invokes this function.
+    ///
+    /// # Arguments
+    /// *  `alloc` - The allocator to use.
+    /// *  `ctx` - The evaluation context.
+    /// *  `lambda_ref` - A reference to the lambda to evaluate.
+    /// *  `arguments` - The arguments to pass.
+    pub fn invoke<'a, 'b, A>(
+        &'a self,
+        alloc: &A,
+        ctx: &C::Context,
+        arguments: &[Value<'a, C::Tag>],
+    ) -> Result<val::owned::Value<C::Tag>, super::Error<'a>>
+    where
+        A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
+        <C as Command>::Tag: 'a,
+    {
+        self.script
+            .invoke(alloc, ctx, self.main, arguments)
+            .ok_or_else(|| super::Error::InvalidOperation(val::Error::Operation("unknown lambda")))
+            .and_then(|v| Ok(v?.try_into()?))
+    }
+}
+
+impl<C> TryFrom<Script<C>> for Function<C>
+where
+    C: Command,
+{
+    type Error = Script<C>;
+
+    /// Attempts to convert a script to a function.
+    ///
+    /// This requires that the script evaluates to a lambda.
+    fn try_from(script: Script<C>) -> Result<Self, Self::Error> {
+        match script.root {
+            Expression::LambdaRef(main) => Ok(Self { script, main }),
+            _ => Err(script),
+        }
+    }
+}
+
+//#[cfg(feature = "serde")]
+impl<'de, C> serde::Deserialize<'de> for Function<C>
+where
+    C: Command,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_any(ScriptVisitor(Default::default()))
+            .and_then(|s| {
+                Self::try_from(s).map_err(|_| serde::de::Error::custom("expected single lambda"))
+            })
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Field {
+    Root,
+    Lambdas,
+}
+
+struct ScriptVisitor<C>(::std::marker::PhantomData<C>);
+
+impl<'de, C> serde::de::Visitor<'de> for ScriptVisitor<C>
+where
+    C: Command,
+{
+    type Value = Script<C>;
+
+    fn expecting(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter.write_str("String")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(v.parse().map_err(|e| E::custom(e))?)
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        println!("Deserializing Script from map");
+
+        let mut root = None;
+        let mut lambdas = None;
+        while let Some(key) = map.next_key::<Field>()? {
+            match key {
+                Field::Root => {
+                    if root.replace(map.next_value()?).is_some() {
+                        return Err(serde::de::Error::duplicate_field("root"));
+                    }
+                }
+                Field::Lambdas => {
+                    if lambdas.replace(map.next_value()?).is_some() {
+                        return Err(serde::de::Error::duplicate_field("lambdas"));
+                    }
+                }
+            }
+        }
+
+        match (root, lambdas) {
+            (Some(root), Some(lambdas)) => Ok(Script { root, lambdas }),
+            (Some(root), _) => Ok(Script {
+                root,
+                lambdas: lambda::Store::default(),
+            }),
+            _ => Err(serde::de::Error::missing_field("root")),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -324,6 +401,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn parse_valid() {
         // Arrange
         let data = r#"(debug 42)"#;
@@ -340,6 +418,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn parse_invalid() {
         // Arrange
         let data = r#"(debug 42"#;
@@ -353,6 +432,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn deserialize_str() {
         // Arrange
         let data = r#""(debug 42)""#;
@@ -369,6 +449,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn deserialize_struct() {
         // Arrange
         let data = r#"{
@@ -392,6 +473,39 @@ mod tests {
 
         // Act
         let actual = serde_json::from_str::<Script<Command>>(data).unwrap();
+
+        // Assert
+        assert_eq!(actual.root, expected.root);
+    }
+
+    #[test]
+    fn function_from_lambda() {
+        // Arrange
+        let data = r#"(lambda (a b) (+ a b))"#;
+        let script = data.parse::<Script<Command>>().unwrap();
+        let tested = Function::try_from(script).unwrap();
+        let expected = Ok(9.0.into());
+
+        // Act
+        let actual = tested.invoke(
+            &alloc::bounded::Allocator::<32, _>::default(),
+            &Context,
+            &[4.0.into(), 5.0.into()],
+        );
+
+        // Assert
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn function_from_expression() {
+        // Arrange
+        let data = r#"(+ 1 2)"#;
+        let script = data.parse::<Script<Command>>().unwrap();
+        let expected = script.clone();
+
+        // Act
+        let actual = Function::try_from(script).unwrap_err();
 
         // Assert
         assert_eq!(actual.root, expected.root);
