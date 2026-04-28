@@ -99,7 +99,7 @@ where
                 continue;
             }
         };
-        let script = match Expression::<C>::try_from(&ast) {
+        let script = match Expression::<C>::parse(&mut Default::default(), &ast) {
             Ok(expression) => expression.link(),
             Err(e) => {
                 println!("! failed to parse: {e}");
@@ -140,5 +140,6 @@ fn repl() -> Result<(), String> {
 
 fn compile(s: &str) -> Result<Expression<C>, String> {
     let ast = ast::parse(&mut ast::tokenize(s)).map_err(|e| format!("failed to parse AST: {e}"))?;
-    Expression::<C>::try_from(&ast).map_err(|e| format!("failed to parse expression: {e}"))
+    Expression::<C>::parse(&mut Default::default(), &ast)
+        .map_err(|e| format!("failed to parse expression: {e}"))
 }

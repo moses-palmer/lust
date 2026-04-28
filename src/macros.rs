@@ -93,7 +93,10 @@ macro_rules! tag {
 /// fn constrain(resources: isize, script: &str) -> Result<val::owned::Value<Tag>, eval::Error> {
 ///     let ast = ast::parse(&mut ast::tokenize(script))
 ///         .map_err(eval::Error::from)?;
-///     let script = Expression::<ConstrainedCommands>::try_from(&ast)?.link();
+///     let script = Expression::<ConstrainedCommands>::parse(
+///         &mut Default::default(),
+///         &ast,
+///     )?.link();
 ///     let alloc = alloc::bounded::Allocator::<128, _>::default();
 ///     script.evaluate(&alloc, &resources.into(), &Environment::empty())
 ///         .map_err(eval::Error::from)
@@ -302,11 +305,18 @@ macro_rules! commands {
                     $ctx_name:ident
                     $(
                         ,$arg_name:ident$(: $arg_type:ty)?
-                        $(=> |$transform_arg:ident| $transform:expr)?
+                        $(=> |
+                            $transform_ctx:ident,
+                            $transform_node:ident $(,)?
+                        | $transform_expr:expr)?
                     )*
                     $(
                         ,...$($args_name:ident)?
-                        $(=> |$va_transform_node:ident, $va_transform_arg:ident| $va_transform:expr)?
+                        $(=> |
+                            $va_transform_ctx:ident,
+                            $va_transform_node:ident,
+                            $va_transform_arg:ident $(,)?
+                        | $va_transform_expr:expr)?
                     )?
                     $(,)?
                 )
@@ -364,6 +374,7 @@ macro_rules! commands {
             }
 
             fn parse<'a>(
+                context: &mut $crate::exp::ParseContext,
                 head: &'a $crate::ast::Node,
                 tail: &'a [$crate::ast::Node],
             ) -> ::std::result::Result<
@@ -428,17 +439,23 @@ macro_rules! commands {
                                     Option::<::std::result::Result<Expression<Self>, Error>>::None
                                         $(
                                             .or_else(|| Some(
-                                                (|$transform_arg: &ast::Node| {
-                                                    $transform
-                                                })(argument_node)))
+                                                (|
+                                                    $transform_ctx: &mut ParseContext,
+                                                    $transform_node: &ast::Node,
+                                                | {
+                                                    $transform_expr
+                                                })(&mut *context, argument_node)))
                                         )?
-                                        .unwrap_or_else(|| Expression::try_from(argument_node))?
+                                        .unwrap_or_else(|| Expression::parse(
+                                            context,
+                                            argument_node,
+                                        ))?
                                 }),*
                             ];
 
                             // ...then handle the varargs...
                             for n in iter {
-                                arguments.push(Expression::try_from(n)?);
+                                arguments.push(Expression::parse(context, n)?);
                             }
                             arguments
                         };
@@ -448,13 +465,14 @@ macro_rules! commands {
                         $($(
                             return (
                                 |
+                                    $va_transform_ctx: &mut ParseContext,
                                     $va_transform_node,
                                     #[allow(unused_mut)]
                                     mut $va_transform_arg: Vec<Expression<Self>>,
                                 | {
-                                    $va_transform
+                                    $va_transform_expr
                                 }
-                            )(head, arguments);
+                            )(context, head, arguments);
                         )?)?
 
                         // Fall back to simply returning the command
@@ -659,7 +677,7 @@ macro_rules! commands {
                 /// ```
                 "let" => Let(
                     ctx,
-                    definitions => |n| Expression::as_map(n)
+                    definitions => |ctx, n| Expression::as_map(ctx, n)
                         .ok_or_else(|| Error::Syntax {
                             message: "expected map",
                         }),
@@ -707,9 +725,9 @@ macro_rules! commands {
                 /// ```
                 "lambda" => Lambda(
                     _ctx,
-                    args => |n| Ok(Expression::AST(n.clone())),
+                    args => |_ctx, n| Ok(Expression::AST(n.clone())),
                     body,
-                    ... => |node, a| {
+                    ... => |_ctx, node, a| {
                         let arguments = $crate::extract!(&a[0], Expression::AST(v) => v,)
                             .and_then(Expression::<Self>::as_argument_list)
                             .ok_or_else(|| Error::Eval {
@@ -945,7 +963,7 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let actual = Expression::<Command>::try_from(&ast);
+        let actual = Expression::<Command>::parse(&mut Default::default(), &ast);
 
         // Assert
         assert_eq!(expected, actual);
@@ -962,7 +980,7 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let actual = Expression::<Command>::try_from(&ast);
+        let actual = Expression::<Command>::parse(&mut Default::default(), &ast);
 
         // Assert
         assert_eq!(expected, actual);
@@ -979,7 +997,7 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let actual = Expression::<Command>::try_from(&ast);
+        let actual = Expression::<Command>::parse(&mut Default::default(), &ast);
 
         // Assert
         assert_eq!(expected, actual);
@@ -994,7 +1012,7 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let expression = Expression::<Command>::try_from(&ast)
+        let expression = Expression::<Command>::parse(&mut Default::default(), &ast)
             .expect("compiles")
             .link();
         let actual = expression.evaluate(&alloc, &Context, &Environment::empty());
@@ -1024,7 +1042,8 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let expression = Expression::<Command>::try_from(&ast).expect("compiles");
+        let expression =
+            Expression::<Command>::parse(&mut Default::default(), &ast).expect("compiles");
         let actual = {
             let mut r = Vec::new();
             expression.for_each(|e| r.push(e.to_string()));
@@ -1135,7 +1154,8 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let mut expression = Expression::<Command>::try_from(&ast).expect("compiles");
+        let mut expression =
+            Expression::<Command>::parse(&mut Default::default(), &ast).expect("compiles");
         let actual_order = {
             let mut r = Vec::new();
             expression.for_each_mut(|e| r.push(e.to_string()));
@@ -1253,7 +1273,7 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let expression = Expression::<Command>::try_from(&ast)
+        let expression = Expression::<Command>::parse(&mut Default::default(), &ast)
             .expect("compiles")
             .link();
         let actual_order = {
