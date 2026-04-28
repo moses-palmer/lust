@@ -13,9 +13,6 @@ where
 
     /// A borrowed environment.
     Borrowed {
-        /// The value names.
-        names: &'b [&'b str],
-
         /// The values.
         values: &'b [Value<'a, C::Tag>],
     },
@@ -24,9 +21,6 @@ where
     Scoped {
         /// The parent scope.
         parent: &'b Environment<'a, 'b, C>,
-
-        /// The value names.
-        names: &'b [String],
 
         /// The values.
         values: &'b [Value<'a, C::Tag>],
@@ -49,43 +43,48 @@ where
     ///
     /// # Arguments
     /// *  `scope` - The inner scope.
-    pub fn borrowed(names: &'b [&'b str], values: &'b [Value<'a, C::Tag>]) -> Self {
-        Self::Borrowed { names, values }
+    pub fn borrowed(values: &'b [Value<'a, C::Tag>]) -> Self {
+        Self::Borrowed { values }
     }
 
     /// Creates an environment inheriting from this one.
     ///
     /// # Arguments
     /// *  `scope` - The inner scope.
-    pub fn with_scope(&'b self, names: &'b [String], values: &'b [Value<'a, C::Tag>]) -> Self {
+    pub fn with_scope(&'b self, values: &'b [Value<'a, C::Tag>]) -> Self {
         Self::Scoped {
             parent: self,
-            names,
             values,
         }
     }
 
     /// Attempts to resolve a name.
     ///
+    /// The value `0` corresponds to the last item in this environment. If the value is greater
+    /// than the length of the current environment, the parent, if any, is queried with `key -
+    /// length_of_current_environment`
+    ///
     /// # Arguments
-    /// *  `key` - The name to resolve.
-    pub fn resolve(&self, key: &str) -> Option<Value<'a, C::Tag>> {
+    /// *  `key` - The key to resolve.
+    pub fn resolve(&self, key: usize) -> Option<Value<'a, C::Tag>> {
         use Environment::*;
         match self {
             Empty => None,
-            Borrowed { names, values } => names
-                .iter()
-                .zip(values.iter())
-                .find_map(|(k, v)| if *k == key { Some(*v) } else { None }),
-            Scoped {
-                parent,
-                names,
-                values,
-            } => names
-                .iter()
-                .zip(values.iter())
-                .find_map(|(k, v)| if *k == key { Some(*v) } else { None })
-                .or_else(|| parent.resolve(key)),
+            Borrowed { values } => {
+                if key < values.len() {
+                    Some(values[values.len() - key - 1])
+                } else {
+                    None
+                }
+            }
+
+            Scoped { parent, values } => {
+                if key < values.len() {
+                    Some(values[values.len() - key - 1])
+                } else {
+                    parent.resolve(key - values.len())
+                }
+            }
         }
     }
 }
@@ -109,8 +108,7 @@ mod tests {
     fn borrowed() {
         // Arrange
         let values = [Value::Number(1.0), Value::Number(2.0)];
-        let keys = ["a", "b"];
-        let tested = Environment::<Command>::borrowed(&keys, &values);
+        let tested = Environment::<Command>::borrowed(&values);
 
         // Act and assert
         assert!(matches!(tested, Environment::Borrowed { .. }));
@@ -120,9 +118,8 @@ mod tests {
     fn with_scope() {
         // Arrange
         let values = [Value::Number(1.0), Value::Number(2.0)];
-        let keys = ["a".into(), "b".into()];
         let t = Environment::<Command>::empty();
-        let tested = t.with_scope(&keys, &values);
+        let tested = t.with_scope(&values);
 
         // Act and assert
         assert!(matches!(tested, Environment::Scoped { .. }));
@@ -135,7 +132,7 @@ mod tests {
         let expected = None;
 
         // Act
-        let actual = tested.resolve("key");
+        let actual = tested.resolve(2);
 
         // Act and assert
         assert_eq!(actual, expected);
@@ -145,12 +142,11 @@ mod tests {
     fn resolve_borrowed() {
         // Arrange
         let values = [Value::Number(1.0), Value::Number(2.0)];
-        let keys = ["a", "b"];
-        let tested = Environment::<Command>::borrowed(&keys, &values);
+        let tested = Environment::<Command>::borrowed(&values);
         let expected = Some(values[0]);
 
         // Act
-        let actual = tested.resolve("a");
+        let actual = tested.resolve(1);
 
         // Act and assert
         assert_eq!(actual, expected);
@@ -160,13 +156,12 @@ mod tests {
     fn resolve_single() {
         // Arrange
         let values = [Value::Number(1.0), Value::Number(2.0)];
-        let keys = ["a".into(), "b".into()];
         let t = Environment::<Command>::empty();
-        let tested = t.with_scope(&keys, &values);
+        let tested = t.with_scope(&values);
         let expected = Some(values[0]);
 
         // Act
-        let actual = tested.resolve("a");
+        let actual = tested.resolve(1);
 
         // Act and assert
         assert_eq!(actual, expected);
@@ -175,19 +170,17 @@ mod tests {
     #[test]
     fn resolve_multi() {
         // Arrange
-        let keys1 = ["a".into()];
         let values1 = [Value::Number(1.0)];
-        let keys2 = ["b".into()];
         let values2 = [Value::Number(2.0)];
         let t = Environment::<Command>::empty();
-        let t = t.with_scope(&keys1, &values1);
-        let tested = t.with_scope(&keys2, &values2);
+        let t = t.with_scope(&values1);
+        let tested = t.with_scope(&values2);
         let expected1 = Some(values1[0]);
         let expected2 = Some(values2[0]);
 
         // Act
-        let actual1 = tested.resolve("a");
-        let actual2 = tested.resolve("b");
+        let actual1 = tested.resolve(1);
+        let actual2 = tested.resolve(0);
 
         // Act and assert
         assert_eq!(actual1, expected1);

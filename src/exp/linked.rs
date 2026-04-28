@@ -123,8 +123,10 @@ where
             ))),
             AST(v) => Ok(Value::AST(v)),
             Reference(v) => env
-                .resolve(v)
-                .ok_or_else(|| super::Error::UnknownReference { value: v.clone() }),
+                .resolve(*v)
+                .ok_or_else(|| super::Error::UnknownReference {
+                    value: format!("#{v}"),
+                }),
             Boolean(v) => Ok((*v).into()),
             Number(v) => Ok((*v).into()),
             String(v) => Ok(v.as_str().into()),

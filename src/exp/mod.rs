@@ -51,7 +51,24 @@ pub type Result<'a, C> = ::std::result::Result<Value<'a, <C as cmd::Command>::Ta
 
 /// The context used while parsing an expression.
 #[derive(Default)]
-pub struct ParseContext {}
+pub struct ParseContext {
+    /// The known variables in this scope.
+    pub scope: Vec<String>,
+}
+
+impl ParseContext {
+    /// Attempts to resolve a variable name.
+    ///
+    /// # Arguments
+    /// *  `name` - The name of the variable to resolve.
+    pub fn resolve<C>(&self, name: &str) -> Option<Expression<C>> {
+        self.scope
+            .iter()
+            .rev()
+            .position(|n| n == name)
+            .map(Expression::Reference)
+    }
+}
 
 /// An expression.
 ///
@@ -69,7 +86,7 @@ pub enum Expression<C> {
     AST(ast::Node),
 
     /// A variable reference.
-    Reference(String),
+    Reference(usize),
 
     /// A boolean value.
     Boolean(bool),
@@ -114,7 +131,13 @@ where
                 Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::FALSE => {
                     Ok(Expression::Boolean(false))
                 }
-                Leaf(ast::Value::Atom { value }) => Ok(Expression::Reference(value.clone())),
+                Leaf(ast::Value::Atom { value }) => {
+                    context
+                        .resolve(value)
+                        .ok_or_else(|| Error::UnknownReference {
+                            value: value.clone(),
+                        })
+                }
                 Leaf(ast::Value::Number { value }) => Ok(Expression::Number(*value)),
                 Leaf(ast::Value::String { value }) => Ok(Expression::String(value.clone())),
                 Tree(v) if !v.is_empty() => {
