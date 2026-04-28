@@ -67,18 +67,16 @@ where
     /// # Arguments
     /// *  `alloc` - The allocator to use.
     /// *  `ctx` - The context of the evaluation.
-    /// *  `env` - The current variable scope.
     pub fn evaluate<'a, 'b, A>(
         &'a self,
         alloc: &A,
         ctx: &C::Context,
-        env: &Environment<'a, 'b, C>,
     ) -> Result<val::owned::Value<C::Tag>, super::Error<'a>>
     where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
     {
-        self.value(&self.root, alloc, ctx, env)
+        self.value(&self.root, alloc, ctx, &Environment::empty())
             .and_then(|v| Ok(v.try_into()?))
     }
 

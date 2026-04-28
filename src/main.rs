@@ -109,7 +109,7 @@ where
         let alloc = alloc::bounded::Allocator::<128, _>::default();
         let ctx = ();
 
-        match script.evaluate(&alloc, &ctx, &Environment::empty()) {
+        match script.evaluate(&alloc, &ctx) {
             Ok(value) => println!("= {}", value),
             Err(error) => println!("! {error}"),
         }
@@ -126,9 +126,7 @@ fn repl() -> Result<(), String> {
         let ctx = ();
         match compile(&line).map(Expression::link).and_then(|script| {
             let alloc = alloc::bounded::Allocator::<128, _>::default();
-            script
-                .evaluate(&alloc, &ctx, &Environment::empty())
-                .map_err(|e| e.to_string())
+            script.evaluate(&alloc, &ctx).map_err(|e| e.to_string())
         }) {
             Ok(value) => println!("= {}", value),
             Err(error) => println!("! {error}"),
