@@ -67,18 +67,16 @@ where
     /// # Arguments
     /// *  `alloc` - The allocator to use.
     /// *  `ctx` - The context of the evaluation.
-    /// *  `env` - The current variable scope.
     pub fn evaluate<'a, 'b, A>(
         &'a self,
         alloc: &A,
         ctx: &C::Context,
-        env: &Environment<'a, 'b, C>,
     ) -> Result<val::owned::Value<C::Tag>, super::Error<'a>>
     where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
     {
-        self.value(&self.root, alloc, ctx, env)
+        self.value(&self.root, alloc, ctx, &Environment::empty())
             .and_then(|v| Ok(v.try_into()?))
     }
 
@@ -125,8 +123,10 @@ where
             ))),
             AST(v) => Ok(Value::AST(v)),
             Reference(v) => env
-                .resolve(v)
-                .ok_or_else(|| super::Error::UnknownReference { value: v.clone() }),
+                .resolve(*v)
+                .ok_or_else(|| super::Error::UnknownReference {
+                    value: format!("#{v}"),
+                }),
             Boolean(v) => Ok((*v).into()),
             Number(v) => Ok((*v).into()),
             String(v) => Ok(v.as_str().into()),
@@ -192,11 +192,13 @@ where
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(
-            Expression::try_from(&ast::parse(&mut ast::tokenize(s)).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?
-                .link(),
+        let mut context = super::ParseContext::default();
+        Ok(Expression::parse(
+            &mut context,
+            &ast::parse(&mut ast::tokenize(s)).map_err(|e| e.to_string())?,
         )
+        .map_err(|e| e.to_string())?
+        .link())
     }
 }
 

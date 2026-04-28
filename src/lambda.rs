@@ -4,8 +4,8 @@ use crate::{Command, Cons, Environment, Expression, Value, alloc, exp};
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Lambda<C> {
-    /// The names of the arguments.
-    arguments: Vec<String>,
+    /// The number of arguments.
+    argument_count: usize,
 
     /// The lambda expression.
     expression: Expression<C>,
@@ -18,11 +18,11 @@ where
     /// Creates a new lambda instance.
     ///
     /// # Arguments
-    /// *  `arguments` - The names of the arguments.
+    /// *  `argument_count` - The number of arguments.
     /// *  `expression` - The lambda body.
-    pub fn new(arguments: Vec<String>, expression: Expression<C>) -> Self {
+    pub fn new(argument_count: usize, expression: Expression<C>) -> Self {
         Self {
-            arguments,
+            argument_count,
             expression,
         }
     }
@@ -47,9 +47,9 @@ where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
     {
-        if self.arguments.len() != arguments.len() {
+        if self.argument_count != arguments.len() {
             Err(exp::Error::InvalidInvocation {
-                expected: self.arguments.len(),
+                expected: self.argument_count,
                 actual: arguments.len(),
             })
         } else {
@@ -57,7 +57,7 @@ where
                 &self.expression,
                 alloc,
                 ctx,
-                &Environment::empty().with_scope(self.arguments.as_slice(), arguments),
+                &Environment::empty().with_scope(arguments),
             )
         }
     }
@@ -128,7 +128,7 @@ mod tests {
         let script = Default::default();
         let alloc = crate::alloc::zero::Allocator::<Cons>::default();
         let tested = Lambda {
-            arguments: vec!["a".into(), "b".into()],
+            argument_count: 2,
             expression: Expression::Number(42.0),
         };
         let expected = Err(exp::Error::InvalidInvocation {
@@ -149,7 +149,7 @@ mod tests {
         let script = Default::default();
         let alloc = crate::alloc::zero::Allocator::<Cons>::default();
         let tested = Lambda {
-            arguments: vec!["a".into()],
+            argument_count: 1,
             expression: Expression::Number(42.0),
         };
         let expected = Err(exp::Error::InvalidInvocation {
@@ -170,7 +170,7 @@ mod tests {
         let script = Default::default();
         let alloc = crate::alloc::zero::Allocator::<Cons>::default();
         let tested = Lambda {
-            arguments: vec!["a".into()],
+            argument_count: 1,
             expression: Expression::Number(42.0),
         };
         let expected = Ok((42.0).into());
@@ -259,7 +259,7 @@ mod tests {
 
     fn lambda() -> Lambda<Command> {
         Lambda {
-            arguments: vec!["a".into()],
+            argument_count: 1,
             expression: Expression::Number(42.0),
         }
     }
