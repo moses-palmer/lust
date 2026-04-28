@@ -101,6 +101,7 @@ where
 
         use super::Expression::*;
         match e {
+            Void => Ok(Value::Void),
             List(v) => {
                 let mut i = v.iter();
                 if let Some(head) = i.next() {
@@ -112,7 +113,7 @@ where
                         self.invoke(alloc, ctx, lambda_ref, &arguments)
                             .unwrap_or_else(|| Err(val::Error::Operation("unknown lambda").into()))
                     } else {
-                        i.try_fold(head, |_, e| self.value(e, alloc, ctx, env))
+                        Err(val::Error::Operation("cannot evaluate list").into())
                     }
                 } else {
                     Ok(Value::NIL)
@@ -146,7 +147,7 @@ where
     /// *  `ctx` - The evaluation context.
     /// *  `lambda_ref` - A reference to the lambda to evaluate.
     /// *  `arguments` - The arguments to pass.
-    fn invoke<'a, A>(
+    pub fn invoke<'a, A>(
         &'a self,
         alloc: &A,
         ctx: &C::Context,
@@ -204,7 +205,7 @@ where
 
 impl<C> ::std::fmt::Display for Script<C>
 where
-    C: ::std::fmt::Display,
+    C: Command + ::std::fmt::Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.root.fmt(f)
