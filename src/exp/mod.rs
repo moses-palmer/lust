@@ -49,6 +49,27 @@ impl From<Infallible> for Error<'_> {
 /// The result of evaluating an expression.
 pub type Result<'a, C> = ::std::result::Result<Value<'a, <C as cmd::Command>::Tag>, Error<'a>>;
 
+/// The context used while parsing an expression.
+#[derive(Default)]
+pub struct ParseContext {
+    /// The known variables in this scope.
+    pub scope: Vec<String>,
+}
+
+impl ParseContext {
+    /// Attempts to resolve a variable name.
+    ///
+    /// # Arguments
+    /// *  `name` - The name of the variable to resolve.
+    pub fn resolve<C>(&self, name: &str) -> Option<Expression<C>> {
+        self.scope
+            .iter()
+            .rev()
+            .position(|n| n == name)
+            .map(Expression::Reference)
+    }
+}
+
 /// An expression.
 ///
 /// Once linked, an expression can be evaluated.
@@ -65,7 +86,7 @@ pub enum Expression<C> {
     AST(ast::Node),
 
     /// A variable reference.
-    Reference(String),
+    Reference(usize),
 
     /// A boolean value.
     Boolean(bool),
@@ -90,6 +111,56 @@ impl<C> Expression<C>
 where
     C: cmd::Command,
 {
+    /// Parses an AST node into an expression.
+    ///
+    /// # Arguments
+    /// *  `context` - The parsing context.
+    /// *  `node` - The AST node to parse.
+    pub fn parse<'a>(
+        context: &mut ParseContext,
+        node: &'a ast::Node,
+    ) -> ::std::result::Result<Self, Error<'a>> {
+        use ast::NodeValue::*;
+        if node.quoted() {
+            Ok(Expression::AST(node.clone()))
+        } else {
+            match node.value() {
+                Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::TRUE => {
+                    Ok(Expression::Boolean(true))
+                }
+                Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::FALSE => {
+                    Ok(Expression::Boolean(false))
+                }
+                Leaf(ast::Value::Atom { value }) => {
+                    context
+                        .resolve(value)
+                        .ok_or_else(|| Error::UnknownReference {
+                            value: value.clone(),
+                        })
+                }
+                Leaf(ast::Value::Number { value }) => Ok(Expression::Number(*value)),
+                Leaf(ast::Value::String { value }) => Ok(Expression::String(value.clone())),
+                Tree(v) if !v.is_empty() => {
+                    let (head, tail) = (&v[0], &v[1..]);
+                    C::parse(context, head, tail).or_else(|e| match e {
+                        Error::UnknownReference { .. } | Error::Eval { .. } => {
+                            Ok(Expression::List(
+                                v.iter()
+                                    .map(|n| Expression::parse(context, n))
+                                    .collect::<::std::result::Result<Vec<_>, _>>()?,
+                            ))
+                        }
+                        _ => Err(e),
+                    })
+                }
+                _ => Err(Error::Eval {
+                    node,
+                    message: "unexpected node",
+                })?,
+            }
+        }
+    }
+
     /// Links this expression so that it can be run.
     pub fn link(self) -> linked::Script<C> {
         self.into()
@@ -194,7 +265,7 @@ where
     ///
     /// # Arguments
     /// *  `node` - The node to convert.
-    pub fn as_map(node: &ast::Node) -> Option<Self> {
+    pub fn as_map(context: &mut ParseContext, node: &ast::Node) -> Option<Self> {
         match node.value() {
             ast::NodeValue::Tree(nodes) => nodes
                 .iter()
@@ -210,7 +281,7 @@ where
                             }) => Ok(value.clone()),
                             _ => Err(()),
                         }?;
-                        let val = Self::try_from(&vs[1]).map_err(|_| ())?;
+                        let val = Self::parse(context, &vs[1]).map_err(|_| ())?;
                         Ok((key, val))
                     }
                     _ => Err(()),
@@ -247,49 +318,6 @@ where
             Command(v) => write!(f, "{v}"),
             LambdaDef(_) => write!(f, "<lambda>"),
             LambdaRef(v) => write!(f, "<lambda {v}>"),
-        }
-    }
-}
-
-impl<'a, C> TryFrom<&'a ast::Node> for Expression<C>
-where
-    C: cmd::Command,
-{
-    type Error = Error<'a>;
-
-    fn try_from(value: &'a ast::Node) -> ::std::result::Result<Self, Self::Error> {
-        use ast::NodeValue::*;
-        if value.quoted() {
-            Ok(Expression::AST(value.clone()))
-        } else {
-            match value.value() {
-                Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::TRUE => {
-                    Ok(Expression::Boolean(true))
-                }
-                Leaf(ast::Value::Atom { value }) if value == Value::<C::Tag>::FALSE => {
-                    Ok(Expression::Boolean(false))
-                }
-                Leaf(ast::Value::Atom { value }) => Ok(Expression::Reference(value.clone())),
-                Leaf(ast::Value::Number { value }) => Ok(Expression::Number(*value)),
-                Leaf(ast::Value::String { value }) => Ok(Expression::String(value.clone())),
-                Tree(v) if !v.is_empty() => {
-                    let (head, tail) = (&v[0], &v[1..]);
-                    C::parse(head, tail).or_else(|e| match e {
-                        Error::UnknownReference { .. } | Error::Eval { .. } => {
-                            Ok(Expression::List(
-                                v.iter()
-                                    .map(Expression::try_from)
-                                    .collect::<::std::result::Result<Vec<_>, _>>()?,
-                            ))
-                        }
-                        _ => Err(e),
-                    })
-                }
-                _ => Err(Error::Eval {
-                    node: value,
-                    message: "unexpected node",
-                })?,
-            }
         }
     }
 }

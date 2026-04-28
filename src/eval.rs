@@ -47,10 +47,9 @@ macro_rules! eval {
             use $crate::*;
             let ast = ast::parse(&mut ast::tokenize($script))
                 .map_err(eval::Error::from)?;
-            let script = Expression::<$commands>::try_from(&ast)?.link();
+            let script = Expression::<$commands>::parse(&mut Default::default(), &ast)?.link();
             let alloc = alloc::bounded::Allocator::<128, _>::default();
-            let result = script.evaluate(&alloc, $ctx, &Environment::empty())
-                .map_err($crate::eval::Error::from)?;
+            let result = script.evaluate(&alloc, $ctx).map_err($crate::eval::Error::from)?;
             result
         }
     };
