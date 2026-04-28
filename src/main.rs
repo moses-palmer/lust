@@ -33,12 +33,13 @@ struct Tag;
 impl val::Tag for Tag {}
 
 commands_all! {
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     enum C<
         Context = (),
         Tag = Tag,
     > {
-        "debug" => Debug(script, alloc, ctx, env, expression) {
-            let value = script.value(expression, alloc, ctx, env)?;
+        "debug" => Debug(ctx, expression) {
+            let value = ctx.value(expression)?;
             println!("DEBUG: {expression:?} = {value}");
             Ok(value)
         }
