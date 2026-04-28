@@ -28,6 +28,37 @@ macro_rules! fail {
     };
 }
 
+/// Defines a type as a tag for values.
+///
+/// This macto also implements converting from a value of the tag type to the tag type itself.
+#[macro_export]
+macro_rules! tag {
+    ($name:ty) => {
+        impl $crate::val::Tag for $name {}
+
+        impl From<$name> for $crate::val::Value<'_, $name> {
+            fn from(value: $name) -> Self {
+                $crate::val::Value::Tag(value)
+            }
+        }
+
+        impl TryFrom<$crate::val::Value<'_, $name>> for $name {
+            type Error = $crate::val::Error;
+
+            fn try_from(value: $crate::val::Value<'_, Tag>) -> Result<Self, Self::Error> {
+                use $crate::val::Value::*;
+                match value {
+                    Tag(tag) => Ok(tag),
+                    _ => Err($crate::val::Error::Conversion {
+                        from_type: value.type_name(),
+                        to_type: "tag",
+                    }),
+                }
+            }
+        }
+    };
+}
+
 /// Defines a collection of built-in commands.
 ///
 /// This macro is used to define the generic type for an executable
@@ -41,7 +72,7 @@ macro_rules! fail {
 /// #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 /// #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 /// enum Tag {}
-/// impl lust::val::Tag for Tag {}
+/// lust::tag!(Tag);
 ///
 /// // The context can be anything implementing lust::exp::cmd::Context, but in order to use the
 /// // eval! macro, it must implement Default
@@ -52,6 +83,7 @@ macro_rules! fail {
 /// // The context can control evaluation; using `ContrainedCommands`, which has `AtomicIsize` as
 /// // its context type, will yield an error if the expression is too complex
 /// lust::commands_all! {
+///     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 ///     enum ConstrainedCommands<
 ///         Tag = Tag,
 ///         Context = lust::exp::cmd::ResourceConstrainer,
@@ -109,15 +141,16 @@ macro_rules! fail {
 /// );
 ///
 /// lust::commands_all! {
+///     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 ///     enum Commands<
 ///         Tag = Tag,
 ///         Context = Context,
 ///     > {
 ///         /// This command is invoked as `(test 1 ...)`, and the first argument must be an
 ///         /// unsigned 32 bit integer
-///         "test" => Test(script, alloc, ctx, env, param: u32, ...args) {
+///         "test" => Test(ctx, param: u32, ...args) {
 ///             args.next()
-///                 .map(|e| script.value(e, alloc, ctx, env))
+///                 .map(|e| ctx.value(e))
 ///                 .unwrap_or_else(|| Ok(Value::NIL))
 ///         }
 ///     }
@@ -266,10 +299,7 @@ macro_rules! commands {
             $(
                 $(#[$command_meta:meta])*
                 $atom:literal => $command:ident(
-                    $script_name:ident,
-                    $alloc_name:ident,
-                    $ctx_name:ident,
-                    $env_name:ident
+                    $ctx_name:ident
                     $(
                         ,$arg_name:ident$(: $arg_type:ty)?
                         $(=> |$transform_arg:ident| $transform:expr)?
@@ -286,7 +316,6 @@ macro_rules! commands {
     ) => {
         $(#[$struct_meta])*
         #[derive(Clone, Debug, PartialEq)]
-        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
         #[doc = "# Commands"]
         $(
             #[doc = concat!(
@@ -460,6 +489,12 @@ macro_rules! commands {
                 type Tag = <$name as $crate::Command>::Tag;
 
                 #[allow(unused)]
+                type ASTNode<'a> = &'a $crate::ast::Node;
+                #[allow(unused)]
+                type ASTKind<'a> = $crate::ast::NodeValue;
+                #[allow(unused)]
+                type ASTValue<'a> = $crate::ast::Value;
+                #[allow(unused)]
                 type Cons<'a> = $crate::Cons<'a, Value<'a>>;
                 #[allow(unused)]
                 type Lambda = $crate::lambda::Ref;
@@ -491,10 +526,12 @@ macro_rules! commands {
                             let mut $args_name = args;
                         )?)?
                         {
-                            let $script_name = script;
-                            let $alloc_name = alloc;
-                            let $ctx_name = ctx;
-                            let $env_name = env;
+                            let $ctx_name = $crate::exp::linked::EvaluationContext {
+                                script,
+                                alloc,
+                                ctx,
+                                env,
+                            };
                             Option::<$crate::exp::Result<Self>>::None
                             $(
                                 .or(Some($code))
@@ -534,10 +571,10 @@ macro_rules! commands {
                 /// ```lisp
                 /// (+ 1 2 3) ; 6
                 /// ```
-                "+" => Add(script, alloc, ctx, env, first: f32, ...rest) {
+                "+" => Add(ctx, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
-                        |acc, i| Ok(acc? + f32::try_from(script.value(i, alloc, ctx, env)?)?)
+                        |acc, i| Ok(acc? + f32::try_from(ctx.value(i)?)?)
                     )
                     .map(Value::from)
                 }
@@ -548,10 +585,10 @@ macro_rules! commands {
                 /// ```lisp
                 /// (- 3 2 1) ; 0
                 /// ```
-                "-" => Subtract(script, alloc, ctx, env, first: f32, ...rest) {
+                "-" => Subtract(ctx, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
-                        |acc, i| Ok(acc? - f32::try_from(script.value(i, alloc, ctx, env)?)?)
+                        |acc, i| Ok(acc? - f32::try_from(ctx.value(i)?)?)
                     )
                     .map(Value::from)
                 }
@@ -562,10 +599,10 @@ macro_rules! commands {
                 /// ```lisp
                 /// (* 1 2 3) ; 6
                 /// ```
-                "*" => Multiply(script, alloc, ctx, env, first: f32, ...rest) {
+                "*" => Multiply(ctx, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
-                        |acc, i| Ok(acc? * f32::try_from(script.value(i, alloc, ctx, env)?)?)
+                        |acc, i| Ok(acc? * f32::try_from(ctx.value(i)?)?)
                     )
                     .map(Value::from)
                 }
@@ -576,12 +613,12 @@ macro_rules! commands {
                 /// ```lisp
                 /// (/ 8 4) ; 2
                 /// ```
-                "/" => Divide(script, alloc, ctx, env, first: f32, ...rest) {
+                "/" => Divide(ctx, first: f32, ...rest) {
                     rest.fold(
                         Ok(first),
                         |acc, i| {
                             let a = acc?;
-                            let b = f32::try_from(script.value(i, alloc, ctx, env)?)?;
+                            let b = f32::try_from(ctx.value(i)?)?;
                             if b != 0.0 {
                                 Ok((a / b).into())
                             } else {
@@ -621,10 +658,7 @@ macro_rules! commands {
                 /// (let ((a 1) (b 2)) (+ a b)) ; 3
                 /// ```
                 "let" => Let(
-                    script,
-                    alloc,
                     ctx,
-                    env,
                     definitions => |n| Expression::as_map(n)
                         .ok_or_else(|| Error::Syntax {
                             message: "expected map",
@@ -638,9 +672,9 @@ macro_rules! commands {
                         }),
                     }?;
                     let values = expressions.iter()
-                        .map(|e| script.value(e, alloc, ctx, env))
+                        .map(|e| ctx.value(e))
                         .collect::<::std::result::Result<Values, _>>()?;
-                    script.value(body, alloc, ctx, &env.with_scope(&names, &values))
+                    ctx.script.value(body, ctx.alloc, ctx.ctx, &ctx.env.with_scope(&names, &values))
                 }
 
                 $($rest)*
@@ -672,10 +706,7 @@ macro_rules! commands {
                 /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
                 /// ```
                 "lambda" => Lambda(
-                    _script,
-                    _alloc,
                     _ctx,
-                    _env,
                     args => |n| Ok(Expression::AST(n.clone())),
                     body,
                     ... => |node, a| {
@@ -716,21 +747,8 @@ macro_rules! commands {
                 /// ```lisp
                 /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
                 /// ```
-                "if" => If(
-                    script,
-                    alloc,
-                    ctx,
-                    env,
-                    cond: bool,
-                    if_true,
-                    if_false,
-                ) {
-                    script.value(
-                        if cond { if_true } else { if_false },
-                        alloc,
-                        ctx,
-                       env,
-                    )
+                "if" => If(ctx, cond: bool, if_true, if_false) {
+                    ctx.value(if cond { if_true } else { if_false })
                 }
 
                 $($rest)*
@@ -759,14 +777,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (< 1 2) ; true
                 /// ```
-                "<" => Lt(
-                    _script,
-                    _alloc,
-                    _ctx,
-                    _env,
-                    a: Value,
-                    b: Value,
-                ) {
+                "<" => Lt(_ctx, a: Value, b: Value) {
                     Ok((a < b).into())
                 }
 
@@ -776,14 +787,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (<= 1 2) ; true
                 /// ```
-                "<=" => LtE(
-                    _script,
-                    _alloc,
-                    _ctx,
-                    _env,
-                    a: Value,
-                    b: Value,
-                ) {
+                "<=" => LtE(_ctx, a: Value, b: Value) {
                     Ok((a <= b).into())
                 }
 
@@ -793,14 +797,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (= 1 2) ; false
                 /// ```
-                "=" => Eq(
-                    _script,
-                    _alloc,
-                    _ctx,
-                    _env,
-                    a: Value,
-                    b: Value,
-                ) {
+                "=" => Eq(_ctx, a: Value, b: Value) {
                     Ok((a == b).into())
                 }
 
@@ -810,14 +807,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (>= 1 2) ; false
                 /// ```
-                ">=" => GtE(
-                    _script,
-                    _alloc,
-                    _ctx,
-                    _env,
-                    a: Value,
-                    b: Value,
-                ) {
+                ">=" => GtE(_ctx, a: Value, b: Value) {
                     Ok((a >= b).into())
                 }
 
@@ -827,14 +817,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (> 1 2) ; false
                 /// ```
-                ">" => Gt(
-                    _script,
-                    _alloc,
-                    _ctx,
-                    _env,
-                    a: Value,
-                    b: Value,
-                ) {
+                ">" => Gt(_ctx, a: Value, b: Value) {
                     Ok((a > b).into())
                 }
 
@@ -864,16 +847,16 @@ macro_rules! commands {
                 /// ```lisp
                 /// (list 1 2 3) ; (1 2 3)
                 /// ```
-                "list" => List(script, alloc, ctx, env, ...items) {
+                "list" => List(ctx, ...items) {
                     items.rev()
                         .try_fold(
                             Value::NIL,
                             |acc, e| {
-                                let v = script.value(e, alloc, ctx, env)?;
+                                let v = ctx.value(e)?;
                                 if let Value::List(cons) = acc {
-                                    Ok(alloc.alloc(cons.prepend(v))?.into())
+                                    Ok(ctx.alloc(cons.prepend(v))?.into())
                                 } else {
-                                    Ok(alloc.alloc(Cons::single(v))?.into())
+                                    Ok(ctx.alloc(Cons::single(v))?.into())
                                 }
                             },
                         )
@@ -885,7 +868,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (car (list 1 2 3)) ; 1
                 /// ```
-                "car" => Car(_script, _alloc, _ctx, _env, cons: &'a Cons<'a>) {
+                "car" => Car(_ctx, cons: &'a Cons<'a>) {
                     Ok(*cons.car())
                 }
 
@@ -895,7 +878,7 @@ macro_rules! commands {
                 /// ```lisp
                 /// (cdr (list 1 2 3)) ; (2 3)
                 /// ```
-                "cdr" => Cdr(_script, _alloc, _ctx, _env, cons: &'a Cons<'a>) {
+                "cdr" => Cdr(_ctx, cons: &'a Cons<'a>) {
                     Ok(cons.cdr().next().map(Into::into).unwrap_or(Value::NIL))
                 }
 
@@ -937,16 +920,16 @@ mod tests {
     };
 
     commands_all! {
+        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
         pub enum Command<
             Tag = Tag,
             Context = Context,
         > {
-            "fixed" => Fixed(script, alloc, ctx, env, a, b) {
-                script.value(b, alloc, ctx, env)
+            "fixed" => Fixed(ctx, a, b) {
+                ctx.value(b)
             }
-            "optional" => Optional(script, alloc, ctx, env, a, ...b) {
-                b.last().map(|e| script.value(e, alloc, ctx, env))
-                    .unwrap_or_else(|| script.value(a, alloc, ctx, env))
+            "optional" => Optional(ctx, a, ...b) {
+                b.last().map(|e| ctx.value(e)).unwrap_or_else(|| ctx.value(a))
             }
         }
     }
