@@ -691,22 +691,33 @@ macro_rules! commands {
                 /// ```
                 "let" => Let(
                     ctx,
-                    definitions => |ctx, n| Expression::as_map(ctx, n)
-                        .ok_or_else(|| Error::Syntax {
-                            message: "expected map",
-                        }),
+                    definitions
+                        => |ctx, n| {
+                            if let Some(Expression::Map(names, values)) = Expression::as_map(
+                                ctx,
+                                n,
+                            ) {
+                                ctx.scope.extend(names.iter().map(Clone::clone));
+                                Ok(Expression::List(values))
+                            } else {
+                                Err(Error::Syntax {
+                                    message: "expected map",
+                                })
+                            }
+                        }
+                        => |ctx, a| {
+                            if let Some(Expression::Map(names, _)) = a.get(0) {
+                                ctx.scope.truncate(ctx.scope.len() - names.len());
+                            }
+                        },
                     body,
                 ) {
-                    let (names, expressions) = match definitions {
-                        Expression::Map(k, v) => Ok((k, v)),
-                        _ => Err(Error::Syntax {
-                            message: "expected map",
-                        }),
-                    }?;
+                    let expressions = $crate::extract!(definitions, Expression::List(v) => v)
+                        .unwrap();
                     let values = expressions.iter()
                         .map(|e| ctx.value(e))
                         .collect::<::std::result::Result<Values, _>>()?;
-                    ctx.script.value(body, ctx.alloc, ctx.ctx, &ctx.env.with_scope(&names, &values))
+                    ctx.script.value(body, ctx.alloc, ctx.ctx, &ctx.env.with_scope(&values))
                 }
 
                 $($rest)*
@@ -739,18 +750,26 @@ macro_rules! commands {
                 /// ```
                 "lambda" => Lambda(
                     _ctx,
-                    args => |_ctx, n| Ok(Expression::AST(n.clone())),
+                    args
+                        => |ctx, n| {
+                            ctx.scope.extend(Expression::<Self>::as_argument_list(n)
+                                .ok_or_else(|| Error::Syntax {
+                                    message: "expected argument list",
+                                })?);
+                            Ok(Expression::AST(n.clone()))
+                        }
+                        => |ctx, a| {
+                            if let Some(Expression::AST(n)) = a.get(0) {
+                                ctx.scope.truncate(ctx.scope.len() - n.len());
+                            }
+                        },
                     body,
-                    ... => |_ctx, node, a| {
-                        let arguments = $crate::extract!(&a[0], Expression::AST(v) => v,)
-                            .and_then(Expression::<Self>::as_argument_list)
-                            .ok_or_else(|| Error::Eval {
-                                node,
-                                message: "invalid argument list",
-                            })?;
-                        let body = a[1].clone();
+                    ... => |_ctx, _node, a| {
+                        let argument_count = $crate::extract!(&a[0], Expression::AST(v) => v.len())
+                            .unwrap();
+                        let body = a.pop().unwrap();
 
-                        Ok(Expression::LambdaDef(vec![lambda::Lambda::new(arguments, body)]))
+                        Ok(Expression::LambdaDef(vec![lambda::Lambda::new(argument_count, body)]))
                     })
 
                 $($rest)*
