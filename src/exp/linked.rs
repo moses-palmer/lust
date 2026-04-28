@@ -2,6 +2,51 @@ use crate::{
     Command, Cons, Context, Environment, Expression, Value, Values, alloc, ast, lambda, val,
 };
 
+/// The context passed when evaluating commands.
+pub struct EvaluationContext<'a, 'b, 'c, A, C>
+where
+    A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
+    C: Command,
+    'a: 'c,
+    'b: 'c,
+{
+    /// The current script.
+    pub script: &'a Script<C>,
+
+    /// The current allocator.
+    pub alloc: &'c A,
+
+    /// The current script context.
+    pub ctx: &'c C::Context,
+
+    /// The current environment.
+    pub env: &'c crate::Environment<'a, 'b, C>,
+}
+
+impl<'a, 'b, 'c, A, C> EvaluationContext<'a, 'b, 'c, A, C>
+where
+    A: alloc::Allocator<'a, Item = crate::Cons<'a, Value<'a, C::Tag>>> + 'a,
+    C: Command,
+    'a: 'c,
+    'b: 'c,
+{
+    /// Evaluates an expression.
+    ///
+    /// # Arguments
+    /// *  `e` - The expression to evaluate.
+    pub fn value(&self, e: &'a Expression<C>) -> super::Result<'a, C> {
+        self.script.value(e, self.alloc, self.ctx, self.env)
+    }
+
+    /// Allocates a _cons_.
+    ///
+    /// # Argument
+    /// *  `value` - The value to allocate.
+    pub fn alloc(&self, value: A::Item) -> Result<&'a A::Item, alloc::Error> {
+        self.alloc.alloc(value)
+    }
+}
+
 /// A linked expression.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -269,7 +314,7 @@ mod tests {
             Tag = Tag,
             Context = Context,
         > {
-            "debug" => Debug(_script, _alloc, _ctx, _env, _a) {
+            "debug" => Debug(_ctx, _a) {
                 Ok(().into())
             }
         }
