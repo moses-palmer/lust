@@ -38,8 +38,8 @@ commands_all! {
         Context = (),
         Tag = Tag,
     > {
-        "debug" => Debug(script, alloc, ctx, env, expression) {
-            let value = script.value(expression, alloc, ctx, env)?;
+        "debug" => Debug(ctx, expression) {
+            let value = ctx.value(expression)?;
             println!("DEBUG: {expression:?} = {value}");
             Ok(value)
         }
