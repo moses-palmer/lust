@@ -23,6 +23,34 @@ pub trait Context {
 
 impl Context for () {}
 
+macro_rules! impl_tuple {
+    ($($idx:tt $t:tt),+) => {
+        impl<$($t,)+> $crate::Context for ($($t,)+)
+        where
+            $($t: $crate::Context,)+
+        {
+            fn on_evaluate<'a>(&self) -> ::std::result::Result<
+                (),
+                $crate::exp::cmd::Error<'a>,
+            > {
+                $(
+                    self.$idx.on_evaluate()?;
+                )+
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_tuple!(0 A);
+impl_tuple!(0 A, 1 B);
+impl_tuple!(0 A, 1 B, 2 C);
+impl_tuple!(0 A, 1 B, 2 C, 3 D);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H);
+
 /// A context that constrains resources for evaluation.
 ///
 /// Each evaluation decrements a counter, and once it reaches 0, an error is returned.

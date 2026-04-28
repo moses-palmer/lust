@@ -8,6 +8,7 @@ struct Context;
 
 commands_all! {
     /// # Scripting language reference
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     pub enum ScriptReference<
         Tag = Tag,
         Context = Context,
