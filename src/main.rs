@@ -99,7 +99,7 @@ where
                 continue;
             }
         };
-        let script = match Expression::<C>::try_from(&ast) {
+        let script = match Expression::<C>::parse(&mut Default::default(), &ast) {
             Ok(expression) => expression.link(),
             Err(e) => {
                 println!("! failed to parse: {e}");
@@ -109,7 +109,7 @@ where
         let alloc = alloc::bounded::Allocator::<128, _>::default();
         let ctx = ();
 
-        match script.evaluate(&alloc, &ctx, &Environment::empty()) {
+        match script.evaluate(&alloc, &ctx) {
             Ok(value) => println!("= {}", value),
             Err(error) => println!("! {error}"),
         }
@@ -126,9 +126,7 @@ fn repl() -> Result<(), String> {
         let ctx = ();
         match compile(&line).map(Expression::link).and_then(|script| {
             let alloc = alloc::bounded::Allocator::<128, _>::default();
-            script
-                .evaluate(&alloc, &ctx, &Environment::empty())
-                .map_err(|e| e.to_string())
+            script.evaluate(&alloc, &ctx).map_err(|e| e.to_string())
         }) {
             Ok(value) => println!("= {}", value),
             Err(error) => println!("! {error}"),
@@ -140,5 +138,6 @@ fn repl() -> Result<(), String> {
 
 fn compile(s: &str) -> Result<Expression<C>, String> {
     let ast = ast::parse(&mut ast::tokenize(s)).map_err(|e| format!("failed to parse AST: {e}"))?;
-    Expression::<C>::try_from(&ast).map_err(|e| format!("failed to parse expression: {e}"))
+    Expression::<C>::parse(&mut Default::default(), &ast)
+        .map_err(|e| format!("failed to parse expression: {e}"))
 }
