@@ -304,10 +304,18 @@ macro_rules! commands {
                     $ctx_name:ident
                     $(
                         ,$arg_name:ident$(: $arg_type:ty)?
-                        $(=> |
-                            $transform_ctx:ident,
-                            $transform_node:ident $(,)?
-                        | $transform_expr:expr)?
+                        $(
+                            => |
+                                $transform_ctx:ident,
+                                $transform_node:ident $(,)?
+                            | $transform_expr:expr
+                            $(
+                                => |
+                                    $finalize_ctx:ident,
+                                    $finalize_arg:ident $(,)?
+                                | $finalize_expr:expr
+                            )?
+                        )?
                     )*
                     $(
                         ,...$($args_name:ident)?
@@ -451,6 +459,13 @@ macro_rules! commands {
                                         ))?
                                 }),*
                             ];
+
+                            // ...the finalise the arguments...
+                            $($($(
+                                let $finalize_ctx = &mut *context;
+                                let $finalize_arg = &arguments;
+                                $finalize_expr
+                            )?)?)*
 
                             // ...then handle the varargs...
                             for n in iter {
