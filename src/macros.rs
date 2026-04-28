@@ -118,24 +118,24 @@ macro_rules! tag {
 ///     Ok((1 + 2 + 3).into()),
 /// );
 /// assert_eq!(
-///     constrain(23, r"
+///     constrain(26, r"
 ///         (let
 ///             (
-///                 (f (lambda (a b) (
+///                 (f (lambda (a b) (do
 ///                     (+ a b b)))))
-///             (
+///             (do
 ///                 (f 1 2)
 ///                 (f 1 2)
 ///             ))"),
 ///     Err(eval::Error::Eval("no more executions permitted".into())),
 /// );
 /// assert_eq!(
-///     constrain(24, r"
+///     constrain(27, r"
 ///         (let
 ///             (
-///                 (f (lambda (a b) (
+///                 (f (lambda (a b) (do
 ///                     (+ a b b)))))
-///             (
+///             (do
 ///                 (f 1 2)
 ///                 (f 1 2)
 ///             ))"),
@@ -182,6 +182,41 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(mod 9 4)" => Commands),
+///     1.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(abs -2)" => Commands),
+///     2.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(min 1 2 3)" => Commands),
+///     1.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(max 1 2 3)" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(or false false true)" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(and true true false)" => Commands),
+///     false.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(xor true true false true)" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(let ((a 1) (b 2)) (+ a b 3))" => Commands),
 ///     (1 + 2 + 3).into(),
 /// );
@@ -194,6 +229,11 @@ macro_rules! tag {
 /// assert_eq!(
 ///     eval!("(if (= 1 2) 1 42)" => Commands),
 ///     42.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(if (= 1 2) 1)" => Commands),
+///     ().into(),
 /// );
 ///
 /// assert_eq!(
@@ -227,6 +267,11 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(!= 1 2)" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(>= 2 1)" => Commands),
 ///     (2 >= 1).into(),
 /// );
@@ -249,6 +294,46 @@ macro_rules! tag {
 /// assert_eq!(
 ///     eval!("(cdr (list 1 2 3 5 8))" => Commands),
 ///     vec![2.into(), 3.into(), 5.into(), 8.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(cons 1 2)" => Commands),
+///     vec![1.0.into(), 2.0.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(cons 1 (list 2 3 4))" => Commands),
+///     vec![1.0.into(), 2.0.into(), 3.0.into(), 4.0.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(null? (list 1 2))" => Commands),
+///     false.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(null? (list))" => Commands),
+///     true.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(length (list 1 2 3))" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(length (list))" => Commands),
+///     0.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3))" => Commands),
+///     6.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 (list))" => Commands),
+///     0.0.into(),
 /// );
 ///
 /// # Ok(())
@@ -661,6 +746,194 @@ macro_rules! commands {
                     .map(Value::from)
                 }
 
+                /// Calculates _a (mod) b_.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (mod 9 4) ; 1
+                /// ```
+                "mod" => Mod(_ctx, a: f32, b: f32) {
+                    if b != 0.0 {
+                        Ok((a % b).into())
+                    } else {
+                        $crate::fail!("division by zero");
+                    }
+                }
+
+                /// Calculates the absolute of a value.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (abs -2) ; 2
+                /// ```
+                "abs" => Abs(_ctx, a: f32) {
+                    Ok(a.abs().into())
+                }
+
+                /// Calculates the minimum value.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (min 1 2 3) ; 1
+                /// ```
+                "min" => Min(ctx, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc?.min(f32::try_from(ctx.value(i)?)?))
+                    )
+                    .map(Value::from)
+                }
+
+                /// Calculates the maximum value.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (max 1 2 3) ; 3
+                /// ```
+                "max" => Max(ctx, first: f32, ...rest) {
+                    rest.fold(
+                        Ok(first),
+                        |acc, i| Ok(acc?.max(f32::try_from(ctx.value(i)?)?))
+                    )
+                    .map(Value::from)
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( control $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Sequentially evaluate a list of expressions and return the last value
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (do 1 2 3) ; 3
+                /// ```
+                "do" => Do(
+                    ctx,
+                    ...expressions,
+                ) {
+                    expressions
+                        .fold(
+                            Ok(Value::NIL),
+                            |acc, e| {
+                                acc?;
+                                ctx.value(e)
+                            },
+                        )
+                }
+
+                /// Evaluate expressions conditionally.
+                ///
+                /// The `false` value is optional; if not provided, this command returns `void`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
+                /// ```
+                "if" => If(
+                    ctx,
+                    cond: bool,
+                    if_true,
+                    ...if_false => |_ctx, _node, a| {
+                        // Either we return the third argument or nil on false
+                        match a.len() {
+                            2 => Ok(Expression::<Self>::Void),
+                            3 => Ok(a.pop().unwrap()),
+                            _ => Err(Error::Syntax { message: "at most one else clause expected" }),
+                        }
+                    },
+                ) {
+                    ctx.value(if cond { if_true } else { if_false.next().unwrap() })
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( boolean $(, $rest_features:ident)* )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// _¬a_
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (not false) ; true
+                /// ```
+                "not" => Not(_ctx, a: bool) {
+                    Ok((!a).into())
+                }
+
+                /// _a ⋀ ..._
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (and true true false) ; false
+                /// ```
+                "and" => And(ctx, a: bool, ...values) {
+                    values.fold(
+                        Ok(a),
+                        |acc, e| Ok(acc? && bool::try_from(ctx.value(e)?)?),
+                    )
+                    .map(Value::from)
+                }
+
+                /// _a ⋁ ..._
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (or false false true) ; true
+                /// ```
+                "or" => Or(ctx, a: bool, ...values) {
+                    values.fold(
+                        Ok(a),
+                        |acc, e| Ok(acc? || bool::try_from(ctx.value(e)?)?),
+                    )
+                    .map(Value::from)
+                }
+
+                /// _a ⊕ ..._
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (xor true true false true) ; true
+                /// ```
+                "xor" => Xor(ctx, a: bool, ...values) {
+                    values.fold(
+                        Ok(a),
+                        |acc, e| Ok(acc? ^ bool::try_from(ctx.value(e)?)?),
+                    )
+                    .map(Value::from)
+                }
+
                 $($rest)*
             }
         }
@@ -744,6 +1017,9 @@ macro_rules! commands {
                 ///
                 /// To later invoke the lambda, bind it to a variable using `let`.
                 ///
+                /// A lambda does not capture its environment; the only variables available are
+                /// the arguments.
+                ///
                 /// # Examples
                 /// ```lisp
                 /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
@@ -771,36 +1047,6 @@ macro_rules! commands {
 
                         Ok(Expression::LambdaDef(vec![lambda::Lambda::new(argument_count, body)]))
                     })
-
-                $($rest)*
-            }
-        }
-    };
-
-    (
-        $(#[$struct_meta:meta])*
-        $enum_vis:vis enum $name:ident<$(
-            $associated_type:ident = $concrete_type:ty
-        ),* $(,)?>
-        impl ( if $(, $rest_features:ident)* )
-        {
-            $($rest:tt)*
-        }
-    ) => {
-        $crate::commands! {
-            $(#[$struct_meta])*
-            $enum_vis enum $name<$(
-                $associated_type = $concrete_type
-            ),*> impl ( $($rest_features),* ) {
-                /// Evaluate expressions conditionally.
-                ///
-                /// # Examples
-                /// ```lisp
-                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
-                /// ```
-                "if" => If(ctx, cond: bool, if_true, if_false) {
-                    ctx.value(if cond { if_true } else { if_false })
-                }
 
                 $($rest)*
             }
@@ -850,6 +1096,16 @@ macro_rules! commands {
                 /// ```
                 "=" => Eq(_ctx, a: Value, b: Value) {
                     Ok((a == b).into())
+                }
+
+                /// Check whether `a != b`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (!= 1 2) ; true
+                /// ```
+                "!=" => Neq(_ctx, a: Value, b: Value) {
+                    Ok((a != b).into())
                 }
 
                 /// Check whether `a >= b`.
@@ -933,6 +1189,71 @@ macro_rules! commands {
                     Ok(cons.cdr().next().map(Into::into).unwrap_or(Value::NIL))
                 }
 
+                /// Prepends a value to a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (cons 1 2) ; (1 2)
+                /// (cons 1 '(2 3 4)) ; (1 2 3 4)
+                /// ```
+                "cons" => Cons(ctx, car: Value, cdr: Value) {
+                    let cons = if let Value::List(cons) = cdr {
+                        cons
+                    } else {
+                        ctx.alloc(Cons::single(cdr))?
+                    };
+                    Ok(ctx.alloc(cons.prepend(car))?.into())
+                }
+
+                /// Determines whether a list is empty.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (null? (list)) ; true
+                /// (null? (list 1)) ; false
+                /// ```
+                "null?" => Null(_ctx, value: Value) {
+                    match value {
+                        Value::Void => Ok(true.into()),
+                        Value::List(_) => Ok(false.into()),
+                        _ => $crate::fail!("expected a list"),
+                    }
+                }
+
+                /// The length of a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (length (list 1 2 3)) ; 3
+                /// (length (list)) ; 0
+                /// ```
+                "length" => Length(_ctx, value: Value) {
+                    match value {
+                        Value::List(cons) => Ok((cons.iter().count() as f32).into()),
+                        Value::Void => Ok(0.0f32.into()),
+                        _ => $crate::fail!("expected a list"),
+                    }
+                }
+
+                /// Left fold over a list.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3)) ; 6
+                /// ```
+                "foldl" => Foldl(ctx, lambda: Lambda, init: Value, list: Value) {
+                    match list {
+                        Value::List(cons) => {
+                            cons.iter().try_fold(init, |acc, elem| ctx.script
+                                .invoke(ctx.alloc, ctx.ctx, lambda, &[acc, *elem])
+                                .unwrap_or_else(|| $crate::fail!("unknown lambda")),
+                            )
+                        }
+                        Value::Void => Ok(init),
+                        _ => $crate::fail!("expected a list"),
+                    }
+                }
+
                 $($rest)*
             }
         }
@@ -954,7 +1275,7 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( arithmetic, let, lambda, if, cmp, list ) {
+            ),*> impl ( boolean, control, arithmetic, let, lambda, cmp, list ) {
                 $($rest)*
             }
         }
