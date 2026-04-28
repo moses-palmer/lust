@@ -1,5 +1,6 @@
 use crate::ast::{self, token::tokenizer::Tokenizer};
 use crate::common::write_list;
+use crate::lambda;
 
 /// An owned value.
 #[derive(Clone, Debug, PartialEq)]
@@ -27,6 +28,9 @@ pub enum Value<T> {
 
     /// A string.
     String(String),
+
+    /// A lambda reference.
+    Lambda(lambda::Ref),
 
     /// A list.
     List(Vec<Self>),
@@ -60,6 +64,7 @@ where
             ),
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
+            Lambda(v) => write!(f, "{v}"),
             List(v) => {
                 write!(f, "{}", Tokenizer::LEFT_PARENTHESIS)?;
                 write_list(v.iter(), f)?;
@@ -85,6 +90,7 @@ where
             Number(v) => Ok(super::Value::Number(*v)),
             Atom(v) => Ok(super::Value::Atom(v)),
             String(v) => Ok(super::Value::String(v)),
+            Lambda(v) => Ok(super::Value::Lambda(*v)),
             _ => Err(super::Error::Conversion {
                 from_type: "owned",
                 to_type: "value",
@@ -120,7 +126,7 @@ where
             Number(v) => Self::Number(*v),
             Atom(v) => Self::Atom(v.to_string()),
             String(v) => Self::String(v.to_string()),
-            Lambda(_) => return Err(super::Error::Operation("cannot serialize lambda")),
+            Lambda(v) => Self::Lambda(*v),
             List(v) => v
                 .iter()
                 .map(Self::try_from)
