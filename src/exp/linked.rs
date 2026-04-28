@@ -192,11 +192,13 @@ where
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(
-            Expression::try_from(&ast::parse(&mut ast::tokenize(s)).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?
-                .link(),
+        let mut context = super::ParseContext::default();
+        Ok(Expression::parse(
+            &mut context,
+            &ast::parse(&mut ast::tokenize(s)).map_err(|e| e.to_string())?,
         )
+        .map_err(|e| e.to_string())?
+        .link())
     }
 }
 
