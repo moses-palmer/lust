@@ -62,6 +62,15 @@ impl<C> Script<C>
 where
     C: Command,
 {
+    /// Constructs a script from an expression and a lambda store.
+    ///
+    /// # Arguments
+    /// *  `root` - The root expression.
+    /// *  `lambdas` - The lambda store.
+    pub fn new(root: super::Expression<C>, lambdas: lambda::Store<C>) -> Self {
+        Self { root, lambdas }
+    }
+
     /// Evaluates the root expression given a context and environment.
     ///
     /// # Arguments
@@ -133,8 +142,7 @@ where
                 ctx.on_evaluate()?;
                 v.evaluate(self, alloc, ctx, env)
             }
-            LambdaDef(_) => Err(val::Error::Operation("cannot evaluate lambda").into()),
-            LambdaRef(v) => Ok((*v).into()),
+            Lambda(v) => Ok((*v).into()),
         }
     }
 
@@ -192,12 +200,13 @@ where
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut context = exp::ParseContext::default();
-        Ok(Expression::parse(
+        let root = Expression::parse(
             &mut context,
             &ast::parse(&mut ast::tokenize(s)).map_err(|e| e.to_string())?,
         )
-        .map_err(|e| e.to_string())?
-        .link())
+        .map_err(|e| e.to_string())?;
+        let lambdas = context.lambdas;
+        Ok(Self { root, lambdas })
     }
 }
 
@@ -207,27 +216,6 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.root.fmt(f)
-    }
-}
-
-impl<C> From<super::Expression<C>> for Script<C>
-where
-    C: Command,
-{
-    fn from(mut value: super::Expression<C>) -> Self {
-        // Replace all lambdas with lambda references
-        let mut lambdas = lambda::Store::default();
-        value.for_each_mut(|e| match e {
-            super::Expression::LambdaDef(vs) if vs.len() == 1 => {
-                *e = super::Expression::LambdaRef(lambdas.register(vs.pop().expect("lambda")))
-            }
-            _ => {}
-        });
-
-        Self {
-            root: value,
-            lambdas,
-        }
     }
 }
 
@@ -297,7 +285,7 @@ where
     /// This requires that the script evaluates to a lambda.
     fn try_from(script: Script<C>) -> Result<Self, Self::Error> {
         match script.root {
-            Expression::LambdaRef(main) => Ok(Self { script, main }),
+            Expression::Lambda(main) => Ok(Self { script, main }),
             _ => Err(script),
         }
     }
