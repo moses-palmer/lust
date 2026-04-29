@@ -643,7 +643,7 @@ macro_rules! commands {
                             let mut $args_name = args;
                         )?)?
                         {
-                            let $ctx_name = $crate::exp::linked::EvaluationContext {
+                            let $ctx_name = $crate::script::EvaluationContext {
                                 script,
                                 alloc,
                                 ctx,
