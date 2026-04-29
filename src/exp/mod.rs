@@ -49,23 +49,34 @@ impl From<Infallible> for Error<'_> {
 pub type Result<'a, C> = ::std::result::Result<Value<'a, <C as cmd::Command>::Tag>, Error<'a>>;
 
 /// The context used while parsing an expression.
-#[derive(Default)]
-pub struct ParseContext {
+pub struct ParseContext<C> {
     /// The known variables in this scope.
     pub scope: Vec<String>,
+
+    /// The lambdas.
+    pub lambdas: lambda::Store<C>,
 }
 
-impl ParseContext {
+impl<C> ParseContext<C> {
     /// Attempts to resolve a variable name.
     ///
     /// # Arguments
     /// *  `name` - The name of the variable to resolve.
-    pub fn resolve<C>(&self, name: &str) -> Option<Expression<C>> {
+    pub fn resolve(&self, name: &str) -> Option<Expression<C>> {
         self.scope
             .iter()
             .rev()
             .position(|n| n == name)
             .map(Expression::Reference)
+    }
+}
+
+impl<C> Default for ParseContext<C> {
+    fn default() -> Self {
+        Self {
+            scope: Default::default(),
+            lambdas: Default::default(),
+        }
     }
 }
 
@@ -102,11 +113,8 @@ pub enum Expression<C> {
     /// A built-in command.
     Command(C),
 
-    /// A list of lambda definitions.
-    LambdaDef(Vec<lambda::Lambda<C>>),
-
     /// A reference to a lambda.
-    LambdaRef(lambda::Ref),
+    Lambda(lambda::Ref),
 }
 
 impl<C> Expression<C>
@@ -119,7 +127,7 @@ where
     /// *  `context` - The parsing context.
     /// *  `node` - The AST node to parse.
     pub fn parse<'a>(
-        context: &mut ParseContext,
+        context: &mut ParseContext<C>,
         node: &'a ast::Node,
     ) -> ::std::result::Result<Self, Error<'a>> {
         use ast::NodeValue::*;
@@ -159,11 +167,6 @@ where
                 })?,
             }
         }
-    }
-
-    /// Links this expression so that it can be run.
-    pub fn link(self) -> crate::Script<C> {
-        self.into()
     }
 
     /// Calls a function for this and each sub-expression.
@@ -265,7 +268,7 @@ where
     ///
     /// # Arguments
     /// *  `node` - The node to convert.
-    pub fn as_map(context: &mut ParseContext, node: &ast::Node) -> Option<Self> {
+    pub fn as_map(context: &mut ParseContext<C>, node: &ast::Node) -> Option<Self> {
         match node.value() {
             ast::NodeValue::Tree(nodes) => nodes
                 .iter()
@@ -317,8 +320,7 @@ where
             Number(v) => write!(f, "{v}"),
             String(v) => write!(f, "{v}"),
             Command(v) => write!(f, "{v}"),
-            LambdaDef(_) => write!(f, "<lambda>"),
-            LambdaRef(v) => write!(f, "<lambda {v}>"),
+            Lambda(v) => write!(f, "<lambda {v}>"),
         }
     }
 }
