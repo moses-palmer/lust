@@ -14,6 +14,7 @@ mod common;
 mod eval;
 mod exp;
 mod lambda;
+mod script;
 mod test_helpers;
 mod val;
 
@@ -23,8 +24,8 @@ pub use exp::{
     Expression,
     cmd::{Command, Context},
     env::Environment,
-    linked::Script,
 };
+pub use script::Script;
 pub use val::{Value, Values, cons::Cons};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]

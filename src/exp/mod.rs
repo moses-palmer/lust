@@ -10,7 +10,6 @@ use crate::{Value, alloc, ast, common::write_list, lambda, val};
 
 pub mod cmd;
 pub mod env;
-pub mod linked;
 
 /// An error occurring when evaluating an expression.
 #[derive(Debug, Error, PartialEq)]
@@ -163,7 +162,7 @@ where
     }
 
     /// Links this expression so that it can be run.
-    pub fn link(self) -> linked::Script<C> {
+    pub fn link(self) -> crate::Script<C> {
         self.into()
     }
 
