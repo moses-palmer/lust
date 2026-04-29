@@ -21,6 +21,7 @@ pub mod alloc;
 pub mod ast;
 pub mod exp;
 pub mod lambda;
+pub mod script;
 pub mod val;
 
 #[cfg(feature = "doc")]
@@ -37,6 +38,6 @@ pub use exp::{
     Expression,
     cmd::{Command, Context},
     env::Environment,
-    linked::Script,
 };
+pub use script::Script;
 pub use val::{Value, Values, cons::Cons};
