@@ -99,10 +99,9 @@ macro_rules! tag {
 /// fn constrain(resources: isize, script: &str) -> Result<val::owned::Value<Tag>, eval::Error> {
 ///     let ast = ast::parse(&mut ast::tokenize(script))
 ///         .map_err(eval::Error::from)?;
-///     let script = Expression::<ConstrainedCommands>::parse(
-///         &mut Default::default(),
-///         &ast,
-///     )?.link();
+///     let mut ctx = Default::default();
+///     let expression = Expression::<ConstrainedCommands>::parse(&mut ctx, &ast)?;
+///     let script = Script::new(expression, ctx.lambdas);
 ///     let alloc = alloc::bounded::Allocator::<128, _>::default();
 ///     script.evaluate(&alloc, &resources.into()).map_err(eval::Error::from)
 /// }
@@ -472,7 +471,7 @@ macro_rules! commands {
             }
 
             fn parse<'a>(
-                context: &mut $crate::exp::ParseContext,
+                context: &mut $crate::exp::ParseContext<Self>,
                 head: &'a $crate::ast::Node,
                 tail: &'a [$crate::ast::Node],
             ) -> ::std::result::Result<
@@ -538,7 +537,7 @@ macro_rules! commands {
                                         $(
                                             .or_else(|| Some(
                                                 (|
-                                                    $transform_ctx: &mut ParseContext,
+                                                    $transform_ctx: &mut ParseContext<Self>,
                                                     $transform_node: &ast::Node,
                                                 | {
                                                     $transform_expr
@@ -570,7 +569,7 @@ macro_rules! commands {
                         $($(
                             return (
                                 |
-                                    $va_transform_ctx: &mut ParseContext,
+                                    $va_transform_ctx: &mut ParseContext<Self>,
                                     $va_transform_node,
                                     #[allow(unused_mut)]
                                     mut $va_transform_arg: Vec<Expression<Self>>,
@@ -649,7 +648,7 @@ macro_rules! commands {
                             let mut $args_name = args;
                         )?)?
                         {
-                            let $ctx_name = $crate::exp::linked::EvaluationContext {
+                            let $ctx_name = $crate::script::EvaluationContext {
                                 script,
                                 alloc,
                                 ctx,
@@ -1046,12 +1045,14 @@ macro_rules! commands {
                             }
                         },
                     body,
-                    ... => |_ctx, _node, a| {
+                    ... => |ctx, _node, a| {
                         let argument_count = $crate::extract!(&a[0], Expression::AST(v) => v.len())
                             .unwrap();
                         let body = a.pop().unwrap();
 
-                        Ok(Expression::LambdaDef(vec![lambda::Lambda::new(argument_count, body)]))
+                        Ok(Expression::Lambda(ctx.lambdas.register(
+                            lambda::Lambda::new(argument_count, body),
+                        )))
                     })
 
                 $($rest)*
@@ -1291,7 +1292,7 @@ macro_rules! commands_all {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Cons, Expression, Value, ast,
+        Cons, Expression, Script, Value, ast,
         exp::Error,
         test_helpers::{Context, Tag},
         val::owned,
@@ -1371,11 +1372,8 @@ mod tests {
         let expected = Ok(Value::from(4.0).try_into().unwrap());
 
         // Act
-        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let expression = Expression::<Command>::parse(&mut Default::default(), &ast)
-            .expect("compiles")
-            .link();
-        let actual = expression.evaluate(&alloc, &Context);
+        let script = script.parse::<Script<Command>>().expect("compiles");
+        let actual = script.evaluate(&alloc, &Context);
 
         // Assert
         assert_eq!(expected, actual);
@@ -1514,17 +1512,15 @@ mod tests {
 
         // Act
         let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let mut expression =
-            Expression::<Command>::parse(&mut Default::default(), &ast).expect("compiles");
+        let mut ctx = Default::default();
+        let mut expression = Expression::<Command>::parse(&mut ctx, &ast).expect("compiles");
         let actual_order = {
             let mut r = Vec::new();
             expression.for_each_mut(|e| r.push(e.to_string()));
             r
         };
         let actual_result1 = owned::Value::try_from(
-            expression
-                .clone()
-                .link()
+            Script::new(expression.clone(), ctx.lambdas.clone())
                 .evaluate(&alloc, &Context)
                 .expect("evaluates"),
         )
@@ -1536,9 +1532,7 @@ mod tests {
             _ => {}
         });
         let actual_result2 = owned::Value::try_from(
-            expression
-                .clone()
-                .link()
+            Script::new(expression.clone(), ctx.lambdas.clone())
                 .evaluate(&alloc, &Context)
                 .expect("evaluates"),
         )
@@ -1624,25 +1618,5 @@ mod tests {
         };
 
         assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn expression_link() {
-        // Arrange
-        let script = r"(lambda (a b) (+ a b))";
-
-        // Act
-        let ast = ast::parse(&mut ast::tokenize(script)).unwrap();
-        let expression = Expression::<Command>::parse(&mut Default::default(), &ast)
-            .expect("compiles")
-            .link();
-        let actual_order = {
-            let mut r = Vec::new();
-            expression.for_each(|e| r.push(e.clone()));
-            r
-        };
-
-        assert_eq!(actual_order.len(), 1);
-        assert!(matches!(actual_order[0], Expression::LambdaRef(_)));
     }
 }
