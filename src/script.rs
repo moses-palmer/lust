@@ -1,5 +1,5 @@
 use crate::{
-    Command, Cons, Context, Environment, Expression, Value, Values, alloc, ast, lambda, val,
+    Command, Cons, Context, Environment, Expression, Value, Values, alloc, ast, exp, lambda, val,
 };
 
 /// The context passed when evaluating commands.
@@ -34,7 +34,7 @@ where
     ///
     /// # Arguments
     /// *  `e` - The expression to evaluate.
-    pub fn value(&self, e: &'a Expression<C>) -> super::Result<'a, C> {
+    pub fn value(&self, e: &'a Expression<C>) -> exp::Result<'a, C> {
         self.script.value(e, self.alloc, self.ctx, self.env)
     }
 
@@ -62,6 +62,15 @@ impl<C> Script<C>
 where
     C: Command,
 {
+    /// Constructs a script from an expression and a lambda store.
+    ///
+    /// # Arguments
+    /// *  `root` - The root expression.
+    /// *  `lambdas` - The lambda store.
+    pub fn new(root: super::Expression<C>, lambdas: lambda::Store<C>) -> Self {
+        Self { root, lambdas }
+    }
+
     /// Evaluates the root expression given a context and environment.
     ///
     /// # Arguments
@@ -71,7 +80,7 @@ where
         &'a self,
         alloc: &A,
         ctx: &C::Context,
-    ) -> Result<val::owned::Value<C::Tag>, super::Error<'a>>
+    ) -> Result<val::owned::Value<C::Tag>, exp::Error<'a>>
     where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
@@ -92,7 +101,7 @@ where
         alloc: &A,
         ctx: &C::Context,
         env: &Environment<'a, 'b, C>,
-    ) -> super::Result<'a, C>
+    ) -> exp::Result<'a, C>
     where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
@@ -119,15 +128,13 @@ where
                     Ok(Value::NIL)
                 }
             }
-            Map(_, _) => Err(super::Error::from(val::Error::Operation(
+            Map(_, _) => Err(exp::Error::from(val::Error::Operation(
                 "cannot evaluate map",
             ))),
             AST(v) => Ok(Value::AST(v)),
-            Reference(v) => env
-                .resolve(*v)
-                .ok_or_else(|| super::Error::UnknownReference {
-                    value: format!("#{v}"),
-                }),
+            Reference(v) => env.resolve(*v).ok_or_else(|| exp::Error::UnknownReference {
+                value: format!("#{v}"),
+            }),
             Boolean(v) => Ok((*v).into()),
             Number(v) => Ok((*v).into()),
             String(v) => Ok(v.as_str().into()),
@@ -135,8 +142,7 @@ where
                 ctx.on_evaluate()?;
                 v.evaluate(self, alloc, ctx, env)
             }
-            LambdaDef(_) => Err(val::Error::Operation("cannot evaluate lambda").into()),
-            LambdaRef(v) => Ok((*v).into()),
+            Lambda(v) => Ok((*v).into()),
         }
     }
 
@@ -153,7 +159,7 @@ where
         ctx: &C::Context,
         lambda_ref: lambda::Ref,
         arguments: &[Value<'a, C::Tag>],
-    ) -> Option<super::Result<'a, C>>
+    ) -> Option<exp::Result<'a, C>>
     where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
@@ -193,13 +199,14 @@ where
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut context = super::ParseContext::default();
-        Ok(Expression::parse(
+        let mut context = exp::ParseContext::default();
+        let root = Expression::parse(
             &mut context,
             &ast::parse(&mut ast::tokenize(s)).map_err(|e| e.to_string())?,
         )
-        .map_err(|e| e.to_string())?
-        .link())
+        .map_err(|e| e.to_string())?;
+        let lambdas = context.lambdas;
+        Ok(Self { root, lambdas })
     }
 }
 
@@ -209,27 +216,6 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.root.fmt(f)
-    }
-}
-
-impl<C> From<super::Expression<C>> for Script<C>
-where
-    C: Command,
-{
-    fn from(mut value: super::Expression<C>) -> Self {
-        // Replace all lambdas with lambda references
-        let mut lambdas = lambda::Store::default();
-        value.for_each_mut(|e| match e {
-            super::Expression::LambdaDef(vs) if vs.len() == 1 => {
-                *e = super::Expression::LambdaRef(lambdas.register(vs.pop().expect("lambda")))
-            }
-            _ => {}
-        });
-
-        Self {
-            root: value,
-            lambdas,
-        }
     }
 }
 
@@ -276,14 +262,14 @@ where
         alloc: &A,
         ctx: &C::Context,
         arguments: &[Value<'a, C::Tag>],
-    ) -> Result<val::owned::Value<C::Tag>, super::Error<'a>>
+    ) -> Result<val::owned::Value<C::Tag>, exp::Error<'a>>
     where
         A: alloc::Allocator<'a, Item = Cons<'a, Value<'a, C::Tag>>> + 'a,
         <C as Command>::Tag: 'a,
     {
         self.script
             .invoke(alloc, ctx, self.main, arguments)
-            .ok_or_else(|| super::Error::InvalidOperation(val::Error::Operation("unknown lambda")))
+            .ok_or_else(|| exp::Error::InvalidOperation(val::Error::Operation("unknown lambda")))
             .and_then(|v| Ok(v?.try_into()?))
     }
 }
@@ -299,7 +285,7 @@ where
     /// This requires that the script evaluates to a lambda.
     fn try_from(script: Script<C>) -> Result<Self, Self::Error> {
         match script.root {
-            Expression::LambdaRef(main) => Ok(Self { script, main }),
+            Expression::Lambda(main) => Ok(Self { script, main }),
             _ => Err(script),
         }
     }
