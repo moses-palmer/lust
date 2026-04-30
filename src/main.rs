@@ -14,6 +14,7 @@ mod common;
 mod eval;
 mod exp;
 mod lambda;
+mod script;
 mod test_helpers;
 mod val;
 
@@ -23,8 +24,8 @@ pub use exp::{
     Expression,
     cmd::{Command, Context},
     env::Environment,
-    linked::Script,
 };
+pub use script::Script;
 pub use val::{Value, Values, cons::Cons};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -99,8 +100,9 @@ where
                 continue;
             }
         };
-        let script = match Expression::<C>::parse(&mut Default::default(), &ast) {
-            Ok(expression) => expression.link(),
+        let mut ctx = Default::default();
+        let script = match Expression::<C>::parse(&mut ctx, &ast) {
+            Ok(expression) => Script::new(expression, ctx.lambdas),
             Err(e) => {
                 println!("! failed to parse: {e}");
                 continue;
@@ -124,7 +126,7 @@ fn repl() -> Result<(), String> {
 
     while let Ok(line) = rl.readline("> ") {
         let ctx = ();
-        match compile(&line).map(Expression::link).and_then(|script| {
+        match compile(&line).and_then(|script| {
             let alloc = alloc::bounded::Allocator::<128, _>::default();
             script.evaluate(&alloc, &ctx).map_err(|e| e.to_string())
         }) {
@@ -136,8 +138,10 @@ fn repl() -> Result<(), String> {
     Ok(())
 }
 
-fn compile(s: &str) -> Result<Expression<C>, String> {
+fn compile(s: &str) -> Result<Script<C>, String> {
     let ast = ast::parse(&mut ast::tokenize(s)).map_err(|e| format!("failed to parse AST: {e}"))?;
-    Expression::<C>::parse(&mut Default::default(), &ast)
+    let mut ctx = Default::default();
+    Expression::<C>::parse(&mut ctx, &ast)
+        .map(|e| Script::new(e, ctx.lambdas))
         .map_err(|e| format!("failed to parse expression: {e}"))
 }
