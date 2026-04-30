@@ -102,7 +102,7 @@ pub trait Command:
     /// *  `head` - The head of the AST node, which is the command name.
     /// *  `tail` - The tail of the AST node, which are the arguments.
     fn parse<'a>(
-        context: &mut super::ParseContext,
+        context: &mut super::ParseContext<Self>,
         head: &'a ast::Node,
         tail: &'a [ast::Node],
     ) -> ::std::result::Result<Expression<Self>, Error<'a>>;
