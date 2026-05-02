@@ -217,6 +217,12 @@ impl Node {
         }
     }
 
+    /// Whether this node is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// The position.
     #[inline]
     pub fn position(&self) -> &Position {

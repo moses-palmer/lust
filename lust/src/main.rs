@@ -80,7 +80,7 @@ where
             data.as_str()
         };
 
-        let ast = match ast::parse(&mut ast::tokenize(&script_string)) {
+        let ast = match ast::parse(&mut ast::tokenize(script_string)) {
             Ok(ast) => ast,
             Err(e) => {
                 println!("! invalid input: {e}");
