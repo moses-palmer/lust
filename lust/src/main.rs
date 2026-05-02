@@ -5,20 +5,7 @@ use std::{
     process,
 };
 
-#[macro_use]
-pub mod macros;
-
-mod alloc;
-mod ast;
-mod common;
-mod eval;
-mod exp;
-mod lambda;
-mod script;
-mod test_helpers;
-mod val;
-
-pub use common::Serializable;
+pub use lust_lib::*;
 
 pub use exp::{
     Expression,
@@ -29,9 +16,9 @@ pub use script::Script;
 pub use val::{Value, Values, cons::Cons};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(::serde::Deserialize, ::serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 struct Tag;
-impl val::Tag for Tag {}
+lust::tag!(Tag);
 
 commands_all! {
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -93,7 +80,7 @@ where
             data.as_str()
         };
 
-        let ast = match ast::parse(&mut ast::tokenize(&script_string)) {
+        let ast = match ast::parse(&mut ast::tokenize(script_string)) {
             Ok(ast) => ast,
             Err(e) => {
                 println!("! invalid input: {e}");

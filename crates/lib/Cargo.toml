@@ -1,0 +1,19 @@
+[package]
+name = "lust-lib"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+serde = { workspace = true, optional = true }
+smallvec = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json =  { workspace = true }
+
+
+[features]
+default = ["serde"]
+
+doc = []
