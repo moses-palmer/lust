@@ -5,7 +5,7 @@
 //! ## Examples
 //!
 //! ```
-//! # use lust::ast;
+//! # use lust_lib::ast;
 //!
 //! let script = "(test-a-script 5 4 (
 //!     \"hello\"))";
@@ -215,6 +215,12 @@ impl Node {
             NodeValue::Leaf(_) => 1,
             NodeValue::Tree(nodes) => nodes.len(),
         }
+    }
+
+    /// Whether this node is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// The position.

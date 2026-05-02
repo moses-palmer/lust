@@ -269,7 +269,9 @@ where
     {
         self.script
             .invoke(alloc, ctx, self.main, arguments)
-            .ok_or_else(|| exp::Error::InvalidOperation(val::Error::Operation("unknown lambda")))
+            .ok_or(exp::Error::InvalidOperation(val::Error::Operation(
+                "unknown lambda",
+            )))
             .and_then(|v| Ok(v?.try_into()?))
     }
 }
@@ -331,7 +333,7 @@ where
     where
         E: serde::de::Error,
     {
-        Ok(v.parse().map_err(|e| E::custom(e))?)
+        v.parse().map_err(|e| E::custom(e))
     }
 
     fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
