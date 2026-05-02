@@ -9,6 +9,9 @@ impl<T> Serializable for T where T: ::serde::Serialize + for<'de> ::serde::Deser
 #[cfg(not(feature = "serde"))]
 pub trait Serializable {}
 
+#[cfg(not(feature = "serde"))]
+impl<T> Serializable for T {}
+
 /// Writes a list to a formatter.
 ///
 /// # Arguments

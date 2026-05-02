@@ -31,7 +31,7 @@
 //! ## Examples
 //!
 //! ```
-//! # use lust::ast;
+//! # use lust_lib::ast;
 //!
 //! let script = "(test \"string\" -123.4 (
 //!     hello-world))";
