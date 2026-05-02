@@ -65,7 +65,8 @@ macro_rules! tag {
 /// [`Expression`](crate::Expression).
 ///
 /// ```
-/// # fn main() -> Result<(), lust::eval::Error> {
+/// # fn main() -> Result<(), lust_lib::eval::Error> {
+/// # use lust_lib as lust;
 /// # use lust::*;
 /// #
 /// // Tagged values must implement a few traits
@@ -78,7 +79,7 @@ macro_rules! tag {
 /// // eval! macro, it must implement Default
 /// #[derive(Default)]
 /// struct Context;
-/// impl lust::Context for Context {}
+/// # impl lust::Context for Context {}
 ///
 /// // The context can control evaluation; using `ContrainedCommands`, which has `AtomicIsize` as
 /// // its context type, will yield an error if the expression is too complex
@@ -671,7 +672,7 @@ macro_rules! commands {
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
         ),* $(,)?>
-        impl ( arithmetic $(, $rest_features:ident)* )
+        impl ( arithmetic $(, $rest_features:ident)* $(,)? )
         {
             $($rest:tt)*
         }
@@ -807,71 +808,7 @@ macro_rules! commands {
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
         ),* $(,)?>
-        impl ( control $(, $rest_features:ident)* )
-        {
-            $($rest:tt)*
-        }
-    ) => {
-        $crate::commands! {
-            $(#[$struct_meta])*
-            $enum_vis enum $name<$(
-                $associated_type = $concrete_type
-            ),*> impl ( $($rest_features),* ) {
-                /// Sequentially evaluate a list of expressions and return the last value
-                ///
-                /// # Examples
-                /// ```lisp
-                /// (do 1 2 3) ; 3
-                /// ```
-                "do" => Do(
-                    ctx,
-                    ...expressions,
-                ) {
-                    expressions
-                        .fold(
-                            Ok(Value::NIL),
-                            |acc, e| {
-                                acc?;
-                                ctx.value(e)
-                            },
-                        )
-                }
-
-                /// Evaluate expressions conditionally.
-                ///
-                /// The `false` value is optional; if not provided, this command returns `void`.
-                ///
-                /// # Examples
-                /// ```lisp
-                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
-                /// ```
-                "if" => If(
-                    ctx,
-                    cond: bool,
-                    if_true,
-                    ...if_false => |_ctx, _node, a| {
-                        // Either we return the third argument or nil on false
-                        match a.len() {
-                            2 => Ok(Expression::<Self>::Void),
-                            3 => Ok(a.pop().unwrap()),
-                            _ => Err(Error::Syntax { message: "at most one else clause expected" }),
-                        }
-                    },
-                ) {
-                    ctx.value(if cond { if_true } else { if_false.next().unwrap() })
-                }
-
-                $($rest)*
-            }
-        }
-    };
-
-    (
-        $(#[$struct_meta:meta])*
-        $enum_vis:vis enum $name:ident<$(
-            $associated_type:ident = $concrete_type:ty
-        ),* $(,)?>
-        impl ( boolean $(, $rest_features:ident)* )
+        impl ( boolean $(, $rest_features:ident)* $(,)? )
         {
             $($rest:tt)*
         }
@@ -943,123 +880,7 @@ macro_rules! commands {
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
         ),* $(,)?>
-        impl ( let $(, $rest_features:ident)* )
-        {
-            $($rest:tt)*
-        }
-    ) => {
-        $crate::commands! {
-            $(#[$struct_meta])*
-            $enum_vis enum $name<$(
-                $associated_type = $concrete_type
-            ),*> impl ( $($rest_features),* ) {
-                /// Bind variables to values.
-                ///
-                /// The defined variables will be available in `body`
-                ///
-                /// # Examples
-                /// ```lisp
-                /// (let ((a 1) (b 2)) (+ a b)) ; 3
-                /// ```
-                "let" => Let(
-                    ctx,
-                    definitions
-                        => |ctx, n| {
-                            if let Some(Expression::Map(names, values)) = Expression::as_map(
-                                ctx,
-                                n,
-                            ) {
-                                ctx.scope.extend(names.iter().map(Clone::clone));
-                                Ok(Expression::List(values))
-                            } else {
-                                Err(Error::Syntax {
-                                    message: "expected map",
-                                })
-                            }
-                        }
-                        => |ctx, a| {
-                            if let Some(Expression::Map(names, _)) = a.get(0) {
-                                ctx.scope.truncate(ctx.scope.len() - names.len());
-                            }
-                        },
-                    body,
-                ) {
-                    let expressions = $crate::extract!(definitions, Expression::List(v) => v)
-                        .unwrap();
-                    let values = expressions.iter()
-                        .map(|e| ctx.value(e))
-                        .collect::<::std::result::Result<Values, _>>()?;
-                    ctx.script.value(body, ctx.alloc, ctx.ctx, &ctx.env.with_scope(&values))
-                }
-
-                $($rest)*
-            }
-        }
-    };
-
-    (
-        $(#[$struct_meta:meta])*
-        $enum_vis:vis enum $name:ident<$(
-            $associated_type:ident = $concrete_type:ty
-        ),* $(,)?>
-        impl ( lambda $(, $rest_features:ident)* )
-        {
-            $($rest:tt)*
-        }
-    ) => {
-        $crate::commands! {
-            $(#[$struct_meta])*
-            $enum_vis enum $name<$(
-                $associated_type = $concrete_type
-            ),*> impl ( $($rest_features),* ) {
-                /// Create a lambda.
-                ///
-                /// To later invoke the lambda, bind it to a variable using `let`.
-                ///
-                /// A lambda does not capture its environment; the only variables available are
-                /// the arguments.
-                ///
-                /// # Examples
-                /// ```lisp
-                /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
-                /// ```
-                "lambda" => Lambda(
-                    _ctx,
-                    args
-                        => |ctx, n| {
-                            ctx.scope.extend(Expression::<Self>::as_argument_list(n)
-                                .ok_or_else(|| Error::Syntax {
-                                    message: "expected argument list",
-                                })?);
-                            Ok(Expression::AST(n.clone()))
-                        }
-                        => |ctx, a| {
-                            if let Some(Expression::AST(n)) = a.get(0) {
-                                ctx.scope.truncate(ctx.scope.len() - n.len());
-                            }
-                        },
-                    body,
-                    ... => |ctx, _node, a| {
-                        let argument_count = $crate::extract!(&a[0], Expression::AST(v) => v.len())
-                            .unwrap();
-                        let body = a.pop().unwrap();
-
-                        Ok(Expression::Lambda(ctx.lambdas.register(
-                            lambda::Lambda::new(argument_count, body),
-                        )))
-                    })
-
-                $($rest)*
-            }
-        }
-    };
-
-    (
-        $(#[$struct_meta:meta])*
-        $enum_vis:vis enum $name:ident<$(
-            $associated_type:ident = $concrete_type:ty
-        ),* $(,)?>
-        impl ( cmp $(, $rest_features:ident)* )
+        impl ( cmp $(, $rest_features:ident)* $(,)? )
         {
             $($rest:tt)*
         }
@@ -1139,7 +960,187 @@ macro_rules! commands {
         $enum_vis:vis enum $name:ident<$(
             $associated_type:ident = $concrete_type:ty
         ),* $(,)?>
-        impl ( list $(, $rest_features:ident)* )
+        impl ( control $(, $rest_features:ident)* $(,)? )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Sequentially evaluate a list of expressions and return the last value
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (do 1 2 3) ; 3
+                /// ```
+                "do" => Do(
+                    ctx,
+                    ...expressions,
+                ) {
+                    expressions
+                        .fold(
+                            Ok(Value::NIL),
+                            |acc, e| {
+                                acc?;
+                                ctx.value(e)
+                            },
+                        )
+                }
+
+                /// Evaluate expressions conditionally.
+                ///
+                /// The `false` value is optional; if not provided, this command returns `void`.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (if (> a b) 3 4)) ; 4
+                /// ```
+                "if" => If(
+                    ctx,
+                    cond: bool,
+                    if_true,
+                    ...if_false => |_ctx, _node, a| {
+                        // Either we return the third argument or nil on false
+                        match a.len() {
+                            2 => Ok(Expression::<Self>::Void),
+                            3 => Ok(a.pop().unwrap()),
+                            _ => Err(Error::Syntax { message: "at most one else clause expected" }),
+                        }
+                    },
+                ) {
+                    ctx.value(if cond { if_true } else { if_false.next().unwrap() })
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( lambda $(, $rest_features:ident)* $(,)? )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Create a lambda.
+                ///
+                /// To later invoke the lambda, bind it to a variable using `let`.
+                ///
+                /// A lambda does not capture its environment; the only variables available are
+                /// the arguments.
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((add (lambda (a b) (+ a b)))) (add 1 2)) ; 3
+                /// ```
+                "lambda" => Lambda(
+                    _ctx,
+                    args
+                        => |ctx, n| {
+                            ctx.scope.extend(Expression::<Self>::as_argument_list(n)
+                                .ok_or_else(|| Error::Syntax {
+                                    message: "expected argument list",
+                                })?);
+                            Ok(Expression::AST(n.clone()))
+                        }
+                        => |ctx, a| {
+                            if let Some(Expression::AST(n)) = a.get(0) {
+                                ctx.scope.truncate(ctx.scope.len() - n.len());
+                            }
+                        },
+                    body,
+                    ... => |ctx, _node, a| {
+                        let argument_count = $crate::extract!(&a[0], Expression::AST(v) => v.len())
+                            .unwrap();
+                        let body = a.pop().unwrap();
+
+                        Ok(Expression::Lambda(ctx.lambdas.register(
+                            lambda::Lambda::new(argument_count, body),
+                        )))
+                    })
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( let $(, $rest_features:ident)* $(,)? )
+        {
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::commands! {
+            $(#[$struct_meta])*
+            $enum_vis enum $name<$(
+                $associated_type = $concrete_type
+            ),*> impl ( $($rest_features),* ) {
+                /// Bind variables to values.
+                ///
+                /// The defined variables will be available in `body`
+                ///
+                /// # Examples
+                /// ```lisp
+                /// (let ((a 1) (b 2)) (+ a b)) ; 3
+                /// ```
+                "let" => Let(
+                    ctx,
+                    definitions
+                        => |ctx, n| {
+                            if let Some(Expression::Map(names, values)) = Expression::as_map(
+                                ctx,
+                                n,
+                            ) {
+                                ctx.scope.extend(names.iter().map(Clone::clone));
+                                Ok(Expression::List(values))
+                            } else {
+                                Err(Error::Syntax {
+                                    message: "expected map",
+                                })
+                            }
+                        }
+                        => |ctx, a| {
+                            if let Some(Expression::Map(names, _)) = a.get(0) {
+                                ctx.scope.truncate(ctx.scope.len() - names.len());
+                            }
+                        },
+                    body,
+                ) {
+                    let expressions = $crate::extract!(definitions, Expression::List(v) => v)
+                        .unwrap();
+                    let values = expressions.iter()
+                        .map(|e| ctx.value(e))
+                        .collect::<::std::result::Result<Values, _>>()?;
+                    ctx.script.value(body, ctx.alloc, ctx.ctx, &ctx.env.with_scope(&values))
+                }
+
+                $($rest)*
+            }
+        }
+    };
+
+    (
+        $(#[$struct_meta:meta])*
+        $enum_vis:vis enum $name:ident<$(
+            $associated_type:ident = $concrete_type:ty
+        ),* $(,)?>
+        impl ( list $(, $rest_features:ident)* $(,)? )
         {
             $($rest:tt)*
         }
@@ -1276,7 +1277,15 @@ macro_rules! commands_all {
             $(#[$struct_meta])*
             $enum_vis enum $name<$(
                 $associated_type = $concrete_type
-            ),*> impl ( boolean, control, arithmetic, let, lambda, cmp, list ) {
+            ),*> impl (
+                arithmetic,
+                boolean,
+                cmp,
+                control,
+                lambda,
+                let,
+                list,
+            ) {
                 $($rest)*
             }
         }
