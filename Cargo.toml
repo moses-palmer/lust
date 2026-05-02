@@ -1,18 +1,19 @@
-[package]
-name = "lust"
-version = "0.0.0"
+[workspace]
+resolver = "3"
+
+members = [
+    "crates/*",
+    "lust",
+]
+
+[workspace.package]
 authors = ["Moses Palmér <mosespalmer@gmail.com>"]
 edition = "2024"
+version = "0.0.0"
 
-[dependencies]
+[workspace.dependencies]
 rustyline = "17.0"
-serde = { version = "1", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 smallvec = "1.15"
 thiserror = "2"
-
-[dev-dependencies]
-serde_json = "1"
-
-[features]
-default = ["serde"]
-doc = []

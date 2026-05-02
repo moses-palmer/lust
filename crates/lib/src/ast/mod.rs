@@ -5,7 +5,7 @@
 //! ## Examples
 //!
 //! ```
-//! # use lust::ast;
+//! # use lust_lib::ast;
 //!
 //! let script = "(test-a-script 5 4 (
 //!     \"hello\"))";
