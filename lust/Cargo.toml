@@ -1,0 +1,22 @@
+[package]
+name = "lust"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+rustyline = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+
+lust-lib = { path = "../crates/lib/", default-features = false }
+
+
+[[bin]]
+name = "lust"
+required-features = ["rustyline"]
+
+
+[features]
+default = ["rustyline", "serde"]
+
+serde = ["dep:serde", "lust-lib/serde"]
