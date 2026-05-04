@@ -47,6 +47,15 @@ pub struct Position {
 }
 
 impl Position {
+    /// Creates a new value.
+    ///
+    /// # Arguments
+    /// *  `row` - The row.
+    /// *  `column`- The column.
+    pub const fn new(row: PositionValue, column: PositionValue) -> Self {
+        Self { row, column }
+    }
+
     /// The starting position.
     pub fn start() -> Self {
         Self { row: 1, column: 1 }
@@ -198,7 +207,7 @@ pub struct Node {
 
 impl Node {
     /// Creates a new AST node.
-    pub fn new(position: Position, quoted: bool, value: NodeValue) -> Self {
+    pub const fn new(position: Position, quoted: bool, value: NodeValue) -> Self {
         Self {
             position,
             quoted,
