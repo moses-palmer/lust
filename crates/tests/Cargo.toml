@@ -1,0 +1,11 @@
+[package]
+name = "lust-macros-tests"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+
+[lib]
+proc-macro = true
+
+[dependencies]
+lust = { path = "../../lust" }

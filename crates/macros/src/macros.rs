@@ -65,15 +65,15 @@ macro_rules! tag {
 /// [`Expression`](crate::Expression).
 ///
 /// ```
-/// # fn main() -> Result<(), lust_lib::eval::Error> {
-/// # use lust_lib as lust;
-/// # use lust::*;
+/// # fn main() -> Result<(), lust_macros::eval::Error> {
+/// # use lust_macros as lust;
+/// # use lust_macros::*;
 /// #
 /// // Tagged values must implement a few traits
 /// #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 /// #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 /// enum Tag {}
-/// lust::tag!(Tag);
+/// tag!(Tag);
 ///
 /// // The context can be anything implementing lust::exp::cmd::Context, but in order to use the
 /// // eval! macro, it must implement Default
@@ -83,7 +83,7 @@ macro_rules! tag {
 ///
 /// // The context can control evaluation; using `ContrainedCommands`, which has `AtomicIsize` as
 /// // its context type, will yield an error if the expression is too complex
-/// lust::commands_all! {
+/// commands_all! {
 ///     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 ///     enum ConstrainedCommands<
 ///         Tag = Tag,
@@ -142,7 +142,7 @@ macro_rules! tag {
 ///     Ok((1 + 2 + 2).into()),
 /// );
 ///
-/// lust::commands_all! {
+/// commands_all! {
 ///     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 ///     enum Commands<
 ///         Tag = Tag,
@@ -1295,11 +1295,20 @@ macro_rules! commands_all {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Cons, Expression, Script, Value, ast,
-        exp::Error,
-        test_helpers::{Context, Tag},
-        val::owned,
+        Cons, Expression, Script, Value, alloc, ast, exp::Error, script::Function, val::owned,
     };
+
+    #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+    #[cfg_attr(feature = "serde", derive(::serde::Deserialize, ::serde::Serialize))]
+    pub enum Tag {
+        A,
+        B,
+        C,
+    }
+    tag!(Tag);
+
+    pub struct Context;
+    impl crate::Context for Context {}
 
     commands_all! {
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -1621,5 +1630,38 @@ mod tests {
         };
 
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn function_from_lambda() {
+        // Arrange
+        let data = r#"(lambda (a b) (+ a b))"#;
+        let script = data.parse::<Script<Command>>().unwrap();
+        let tested = Function::try_from(script).unwrap();
+        let expected = Ok(9.0.into());
+
+        // Act
+        let actual = tested.invoke(
+            &alloc::bounded::Allocator::<32, _>::default(),
+            &Context,
+            &[4.0.into(), 5.0.into()],
+        );
+
+        // Assert
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn function_from_expression() {
+        // Arrange
+        let data = r#"(+ 1 2)"#;
+        let script = data.parse::<Script<Command>>().unwrap();
+        let expected = script.clone();
+
+        // Act
+        let actual = Function::try_from(script).unwrap_err();
+
+        // Assert
+        assert_eq!(actual, expected);
     }
 }

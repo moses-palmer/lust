@@ -100,6 +100,7 @@ name = "lust"
 version = "0.0.0"
 dependencies = [
  "lust-lib",
+ "lust-macros",
  "rustyline",
  "serde",
 ]
@@ -112,6 +113,34 @@ dependencies = [
  "serde_json",
  "smallvec",
  "thiserror",
+]
+
+[[package]]
+name = "lust-macros"
+version = "0.0.0"
+dependencies = [
+ "lust-lib",
+ "lust-proc-macros",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "lust-macros-tests"
+version = "0.0.0"
+dependencies = [
+ "lust",
+]
+
+[[package]]
+name = "lust-proc-macros"
+version = "0.0.0"
+dependencies = [
+ "lust-lib",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
