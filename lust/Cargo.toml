@@ -9,6 +9,7 @@ rustyline = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
 lust-lib = { path = "../crates/lib/", default-features = false }
+lust-macros = { path = "../crates/macros/" }
 
 
 [[bin]]
@@ -20,3 +21,4 @@ required-features = ["rustyline"]
 default = ["rustyline", "serde"]
 
 serde = ["dep:serde", "lust-lib/serde"]
+doc = []

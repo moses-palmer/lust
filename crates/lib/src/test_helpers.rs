@@ -20,7 +20,9 @@ pub type Expression = crate::Expression<Command>;
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(::serde::Deserialize, ::serde::Serialize))]
-pub struct Command;
+pub enum Command {
+    Debug(Vec<Expression>),
+}
 
 impl<'a> TryFrom<&'a ast::Node> for Command {
     type Error = exp::Error<'a>;
@@ -53,11 +55,25 @@ impl exp::cmd::Command for Command {
     }
 
     fn parse<'a>(
-        _ctx: &mut exp::ParseContext<Self>,
-        _head: &'a ast::Node,
-        _tail: &'a [ast::Node],
+        ctx: &mut exp::ParseContext<Self>,
+        head: &'a ast::Node,
+        tail: &'a [ast::Node],
     ) -> ::std::result::Result<exp::Expression<Self>, exp::Error<'a>> {
-        todo!()
+        match head.value {
+            ast::NodeValue::Leaf(ref value)
+                if matches!(
+                    value,
+                    ast::Value::Atom { value: v } if v == "debug",
+                ) =>
+            {
+                Ok(Expression::Command(Self::Debug(
+                    tail.iter()
+                        .map(|n| Ok(Expression::parse(ctx, n)?))
+                        .collect::<Result<_, exp::Error<'a>>>()?,
+                )))
+            }
+            _ => todo!(),
+        }
     }
 
     fn evaluate<'a, 'b, A>(
