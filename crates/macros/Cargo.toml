@@ -1,13 +1,15 @@
 [package]
-name = "lust-lib"
+name = "lust-macros"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
 serde = { workspace = true, optional = true }
-smallvec = { workspace = true }
 thiserror = { workspace = true }
+
+lust-lib = { path = "../lib" }
+lust-proc-macros = { path = "../proc-macros" }
 
 [dev-dependencies]
 serde_json =  { workspace = true }
