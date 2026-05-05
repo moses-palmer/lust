@@ -64,7 +64,7 @@ use super::{Position, PositionedErrorCause};
 pub(crate) mod tokenizer;
 
 /// An error occurring during tokenisation.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Clone, Copy, Debug, Error, PartialEq)]
 pub enum Error {
     /// The input terminated unexpectedly.
     #[error("unexpected end of input")]
@@ -81,7 +81,7 @@ pub enum Error {
 impl PositionedErrorCause for Error {}
 
 /// An individual token value.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value<'a> {
     /// A left parenthesis.
     ///
