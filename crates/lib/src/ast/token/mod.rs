@@ -117,6 +117,19 @@ pub enum Value<'a> {
     Atom { value: &'a str },
 }
 
+impl<'a> Value<'a> {
+    /// Constructs a [`Token`] with this value for a specific position.
+    ///
+    /// # Arguments
+    /// *  `position` - The position.
+    pub fn for_position(self, position: Position) -> Token<'a> {
+        Token {
+            value: self,
+            position,
+        }
+    }
+}
+
 impl<'a> ::std::fmt::Display for Value<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Value::*;
