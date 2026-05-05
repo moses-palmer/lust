@@ -148,8 +148,8 @@ impl<'a> Token<'a> {
 
     /// The position.
     #[inline]
-    pub fn position(&self) -> &Position {
-        &self.position
+    pub fn position(&self) -> Position {
+        self.position
     }
 }
 
