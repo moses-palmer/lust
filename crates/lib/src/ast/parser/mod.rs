@@ -56,11 +56,11 @@ fn parse_first<'a>(
 
     match tokens.next().transpose()? {
         Some(token) => match token.value() {
-            LeftParenthesis => parse_tree(*token.position(), quoted, tokens),
+            LeftParenthesis => parse_tree(token.position(), quoted, tokens),
             Quote => parse_first(tokens, true),
-            String { value } if !quoted => Ok(parse_string(*token.position(), value)),
-            Number { value } if !quoted => Ok(parse_number(*token.position(), value)),
-            Atom { value } => Ok(parse_atom(*token.position(), value, quoted)),
+            String { value } if !quoted => Ok(parse_string(token.position(), value)),
+            Number { value } if !quoted => Ok(parse_number(token.position(), value)),
+            Atom { value } => Ok(parse_atom(token.position(), value, quoted)),
             _ => Err(Error::UnexpectedToken { token }),
         },
         None => Err(Error::UnexpectedEnd),
