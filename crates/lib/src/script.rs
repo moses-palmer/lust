@@ -48,7 +48,7 @@ where
 }
 
 /// A linked expression.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Script<C> {
     /// The root expression.
@@ -374,19 +374,7 @@ where
 mod tests {
     use super::*;
 
-    use crate::test_helpers::{Context, Tag};
-
-    commands_all! {
-        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-        pub enum Command<
-            Tag = Tag,
-            Context = Context,
-        > {
-            "debug" => Debug(_ctx, _a) {
-                Ok(().into())
-            }
-        }
-    }
+    use crate::test_helpers::Command;
 
     #[test]
     #[cfg(feature = "serde")]
@@ -461,39 +449,6 @@ mod tests {
 
         // Act
         let actual = serde_json::from_str::<Script<Command>>(data).unwrap();
-
-        // Assert
-        assert_eq!(actual.root, expected.root);
-    }
-
-    #[test]
-    fn function_from_lambda() {
-        // Arrange
-        let data = r#"(lambda (a b) (+ a b))"#;
-        let script = data.parse::<Script<Command>>().unwrap();
-        let tested = Function::try_from(script).unwrap();
-        let expected = Ok(9.0.into());
-
-        // Act
-        let actual = tested.invoke(
-            &alloc::bounded::Allocator::<32, _>::default(),
-            &Context,
-            &[4.0.into(), 5.0.into()],
-        );
-
-        // Assert
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn function_from_expression() {
-        // Arrange
-        let data = r#"(+ 1 2)"#;
-        let script = data.parse::<Script<Command>>().unwrap();
-        let expected = script.clone();
-
-        // Act
-        let actual = Function::try_from(script).unwrap_err();
 
         // Assert
         assert_eq!(actual.root, expected.root);

@@ -64,7 +64,7 @@ where
 }
 
 /// A collection of lambdas.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Store<C> {
     /// The backing list.

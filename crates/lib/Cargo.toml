@@ -15,5 +15,3 @@ serde_json =  { workspace = true }
 
 [features]
 default = ["serde"]
-
-doc = []

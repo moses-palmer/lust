@@ -1,0 +1,19 @@
+[package]
+name = "lust-macros"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
+
+lust-lib = { path = "../lib" }
+lust-proc-macros = { path = "../proc-macros" }
+
+[dev-dependencies]
+serde_json =  { workspace = true }
+
+
+[features]
+default = ["serde"]

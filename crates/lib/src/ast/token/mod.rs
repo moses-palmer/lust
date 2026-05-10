@@ -64,7 +64,7 @@ use super::{Position, PositionedErrorCause};
 pub(crate) mod tokenizer;
 
 /// An error occurring during tokenisation.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Clone, Copy, Debug, Error, PartialEq)]
 pub enum Error {
     /// The input terminated unexpectedly.
     #[error("unexpected end of input")]
@@ -81,7 +81,7 @@ pub enum Error {
 impl PositionedErrorCause for Error {}
 
 /// An individual token value.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value<'a> {
     /// A left parenthesis.
     ///
@@ -117,6 +117,19 @@ pub enum Value<'a> {
     Atom { value: &'a str },
 }
 
+impl<'a> Value<'a> {
+    /// Constructs a [`Token`] with this value for a specific position.
+    ///
+    /// # Arguments
+    /// *  `position` - The position.
+    pub fn for_position(self, position: Position) -> Token<'a> {
+        Token {
+            value: self,
+            position,
+        }
+    }
+}
+
 impl<'a> ::std::fmt::Display for Value<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Value::*;
@@ -148,8 +161,8 @@ impl<'a> Token<'a> {
 
     /// The position.
     #[inline]
-    pub fn position(&self) -> &Position {
-        &self.position
+    pub fn position(&self) -> Position {
+        self.position
     }
 }
 

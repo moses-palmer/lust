@@ -5,7 +5,7 @@ use std::{
     process,
 };
 
-pub use lust_lib::*;
+pub use lust_macros::*;
 
 pub use exp::{
     Expression,
