@@ -100,8 +100,11 @@ where
 }
 
 fn repl() -> Result<(), String> {
-    let mut rl = rustyline::DefaultEditor::new()
-        .map_err(|e| format!("failed to create line reader: {e}"))?;
+    let mut rl = rustyline::Editor::<(), rustyline::history::MemHistory>::with_history(
+        rustyline::Config::builder().auto_add_history(true).build(),
+        rustyline::history::MemHistory::new(),
+    )
+    .map_err(|e| format!("failed to create line reader: {e}"))?;
 
     while let Ok(line) = rl.readline("> ") {
         let ctx = ();
