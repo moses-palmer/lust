@@ -83,14 +83,12 @@ impl<C> Default for ParseContext<C> {
 /// An expression.
 ///
 /// Once linked, an expression can be evaluated.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum Expression<C> {
     /// Nothing
+    #[default]
     Void,
-
-    /// A list of expressions.
-    List(Vec<Self>),
 
     /// A map of expressions.
     Map(Vec<String>, Vec<Self>),
@@ -115,6 +113,9 @@ pub enum Expression<C> {
 
     /// A reference to a lambda.
     Lambda(lambda::Ref),
+
+    /// A lambda invokation.
+    Invoke(Vec<Self>),
 }
 
 impl<C> Expression<C>
@@ -153,10 +154,11 @@ where
                 Tree(v) if !v.is_empty() => {
                     let (head, tail) = (&v[0], &v[1..]);
                     C::parse(context, head, tail).or_else(|e| match e {
-                        Error::UnknownReference { .. } => Ok(Expression::List(
+                        Error::UnknownReference { .. } => Ok(Expression::Invoke(
                             v.iter()
                                 .map(|n| Expression::parse(context, n))
-                                .collect::<::std::result::Result<Vec<_>, _>>()?,
+                                .collect::<::std::result::Result<Vec<_>, _>>()
+                                .map_err(|_| e)?,
                         )),
                         _ => Err(e),
                     })
@@ -184,11 +186,6 @@ where
         {
             f(e);
             match e {
-                Expression::List(v) => {
-                    for e in v {
-                        visit(e, f);
-                    }
-                }
                 Expression::Map(_, v) => {
                     for e in v {
                         visit(e, f);
@@ -196,6 +193,11 @@ where
                 }
                 Expression::Command(c) => {
                     for e in c.arguments() {
+                        visit(e, f);
+                    }
+                }
+                Expression::Invoke(v) => {
+                    for e in v {
                         visit(e, f);
                     }
                 }
@@ -221,11 +223,6 @@ where
         {
             f(e);
             match e {
-                Expression::List(v) => {
-                    for e in v {
-                        visit(e, f);
-                    }
-                }
                 Expression::Map(_, v) => {
                     for e in v {
                         visit(e, f);
@@ -233,6 +230,11 @@ where
                 }
                 Expression::Command(c) => {
                     for e in c.arguments_mut() {
+                        visit(e, f);
+                    }
+                }
+                Expression::Invoke(v) => {
+                    for e in v {
                         visit(e, f);
                     }
                 }
@@ -298,12 +300,6 @@ where
     }
 }
 
-impl<C> Default for Expression<C> {
-    fn default() -> Self {
-        Expression::List(Vec::new())
-    }
-}
-
 impl<C> ::std::fmt::Display for Expression<C>
 where
     C: cmd::Command + ::std::fmt::Display,
@@ -312,7 +308,6 @@ where
         use Expression::*;
         match self {
             Void => write!(f, "{}", Value::<C::Tag>::Void),
-            List(v) => write_list(v.iter(), f),
             Map(v, _) => write_list(v.iter(), f),
             AST(v) => write!(f, "{v}"),
             Reference(v) => write!(f, "{v}"),
@@ -321,6 +316,7 @@ where
             String(v) => write!(f, "{v}"),
             Command(v) => write!(f, "{v}"),
             Lambda(v) => write!(f, "<lambda {v}>"),
+            Invoke(v) => write_list(v.iter(), f),
         }
     }
 }
