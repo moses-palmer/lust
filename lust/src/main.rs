@@ -80,16 +80,8 @@ where
             data.as_str()
         };
 
-        let ast = match ast::parse(&mut ast::tokenize(script_string)) {
-            Ok(ast) => ast,
-            Err(e) => {
-                println!("! invalid input: {e}");
-                continue;
-            }
-        };
-        let mut ctx = Default::default();
-        let script = match Expression::<C>::parse(&mut ctx, &ast) {
-            Ok(expression) => Script::new(expression, ctx.lambdas),
+        let script = match script_string.parse::<Script<C>>() {
+            Ok(script) => script,
             Err(e) => {
                 println!("! failed to parse: {e}");
                 continue;
@@ -108,8 +100,11 @@ where
 }
 
 fn repl() -> Result<(), String> {
-    let mut rl = rustyline::DefaultEditor::new()
-        .map_err(|e| format!("failed to create line reader: {e}"))?;
+    let mut rl = rustyline::Editor::<(), rustyline::history::MemHistory>::with_history(
+        rustyline::Config::builder().auto_add_history(true).build(),
+        rustyline::history::MemHistory::new(),
+    )
+    .map_err(|e| format!("failed to create line reader: {e}"))?;
 
     while let Ok(line) = rl.readline("> ") {
         let ctx = ();
@@ -126,9 +121,6 @@ fn repl() -> Result<(), String> {
 }
 
 fn compile(s: &str) -> Result<Script<C>, String> {
-    let ast = ast::parse(&mut ast::tokenize(s)).map_err(|e| format!("failed to parse AST: {e}"))?;
-    let mut ctx = Default::default();
-    Expression::<C>::parse(&mut ctx, &ast)
-        .map(|e| Script::new(e, ctx.lambdas))
+    s.parse()
         .map_err(|e| format!("failed to parse expression: {e}"))
 }
