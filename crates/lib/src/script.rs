@@ -111,7 +111,7 @@ where
         use super::Expression::*;
         match e {
             Void => Ok(Value::Void),
-            List(v) => {
+            Invoke(v) => {
                 let mut i = v.iter();
                 if let Some(head) = i.next() {
                     let head = self.value(head, alloc, ctx, env)?;
