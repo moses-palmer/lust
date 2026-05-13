@@ -83,10 +83,11 @@ impl<C> Default for ParseContext<C> {
 /// An expression.
 ///
 /// Once linked, an expression can be evaluated.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum Expression<C> {
     /// Nothing
+    #[default]
     Void,
 
     /// A list of expressions.
@@ -295,12 +296,6 @@ where
                 .ok(),
             _ => None,
         }
-    }
-}
-
-impl<C> Default for Expression<C> {
-    fn default() -> Self {
-        Expression::List(Vec::new())
     }
 }
 
