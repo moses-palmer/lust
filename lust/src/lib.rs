@@ -9,4 +9,8 @@
 pub use lust_macros::*;
 
 #[cfg(feature = "doc")]
-pub mod doc;
+mod doc;
+
+#[cfg(feature = "doc")]
+#[doc(inline)]
+pub use doc::ScriptReference;
