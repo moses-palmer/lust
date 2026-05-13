@@ -157,7 +157,8 @@ where
                         Error::UnknownReference { .. } => Ok(Expression::List(
                             v.iter()
                                 .map(|n| Expression::parse(context, n))
-                                .collect::<::std::result::Result<Vec<_>, _>>()?,
+                                .collect::<::std::result::Result<Vec<_>, _>>()
+                                .map_err(|_| e)?,
                         )),
                         _ => Err(e),
                     })
