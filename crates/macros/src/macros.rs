@@ -1108,7 +1108,7 @@ macro_rules! commands {
                                 n,
                             ) {
                                 ctx.scope.extend(names.iter().map(Clone::clone));
-                                Ok(Expression::List(values))
+                                Ok(Expression::Invoke(values))
                             } else {
                                 Err(Error::Syntax {
                                     message: "expected map",
@@ -1122,7 +1122,7 @@ macro_rules! commands {
                         },
                     body,
                 ) {
-                    let expressions = $crate::extract!(definitions, Expression::List(v) => v)
+                    let expressions = $crate::extract!(definitions, Expression::Invoke(v) => v)
                         .unwrap();
                     let values = expressions.iter()
                         .map(|e| ctx.value(e))
@@ -1427,23 +1427,23 @@ mod tests {
     fn expression_for_each_list() {
         // Arrange
         let expected = vec![
-            Expression::<Command>::List(vec![
+            Expression::<Command>::Invoke(vec![
                 Expression::Number(1.0),
                 Expression::Number(2.0),
-                Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+                Expression::Invoke(vec![Expression::Number(3.0), Expression::Number(4.0)]),
             ]),
             Expression::Number(1.0),
             Expression::Number(2.0),
-            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Invoke(vec![Expression::Number(3.0), Expression::Number(4.0)]),
             Expression::Number(3.0),
             Expression::Number(4.0),
         ];
 
         // Act
-        let expression = Expression::<Command>::List(vec![
+        let expression = Expression::<Command>::Invoke(vec![
             Expression::Number(1.0),
             Expression::Number(2.0),
-            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Invoke(vec![Expression::Number(3.0), Expression::Number(4.0)]),
         ]);
         let actual = {
             let mut r = Vec::new();
@@ -1559,23 +1559,23 @@ mod tests {
     fn expression_for_each_mut_list() {
         // Arrange
         let expected = vec![
-            Expression::<Command>::List(vec![
+            Expression::<Command>::Invoke(vec![
                 Expression::Number(1.0),
                 Expression::Number(2.0),
-                Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+                Expression::Invoke(vec![Expression::Number(3.0), Expression::Number(4.0)]),
             ]),
             Expression::Number(1.0),
             Expression::Number(2.0),
-            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Invoke(vec![Expression::Number(3.0), Expression::Number(4.0)]),
             Expression::Number(3.0),
             Expression::Number(4.0),
         ];
 
         // Act
-        let mut expression = Expression::<Command>::List(vec![
+        let mut expression = Expression::<Command>::Invoke(vec![
             Expression::Number(1.0),
             Expression::Number(2.0),
-            Expression::List(vec![Expression::Number(3.0), Expression::Number(4.0)]),
+            Expression::Invoke(vec![Expression::Number(3.0), Expression::Number(4.0)]),
         ]);
         let actual = {
             let mut r = Vec::new();
