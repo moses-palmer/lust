@@ -45,6 +45,19 @@ where
     pub fn alloc(&self, value: A::Item) -> Result<&'a A::Item, alloc::Error> {
         self.alloc.alloc(value)
     }
+
+    /// Invokes a lambda.
+    ///
+    /// # Arguments
+    /// *  `alloc` - The allocator to use.
+    /// *  `ctx` - The evaluation context.
+    /// *  `lambda_ref` - A reference to the lambda to evaluate.
+    /// *  `arguments` - The arguments to pass.
+    pub fn invoke(&self, lambda: lambda::Ref, args: &[Value<'a, C::Tag>]) -> exp::Result<'a, C> {
+        self.script
+            .invoke(self.alloc, self.ctx, lambda, args)
+            .unwrap_or_else(|| Err(val::Error::Operation("unknown lambda").into()))
+    }
 }
 
 /// A linked expression.

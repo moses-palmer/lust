@@ -1252,10 +1252,10 @@ macro_rules! commands {
                 "foldl" => Foldl(ctx, lambda: Lambda, init: Value, list: Value) {
                     match list {
                         Value::List(cons) => {
-                            cons.iter().try_fold(init, |acc, elem| ctx.script
-                                .invoke(ctx.alloc, ctx.ctx, lambda, &[acc, *elem])
-                                .unwrap_or_else(|| $crate::fail!("unknown lambda")),
-                            )
+                            cons.iter().try_fold(init, |acc, elem| ctx.invoke(
+                                lambda,
+                                &[acc, *elem],
+                            ))
                         }
                         Value::Void => Ok(init),
                         _ => $crate::fail!("expected a list"),
