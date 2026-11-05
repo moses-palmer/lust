@@ -15,6 +15,20 @@ impl<'a, T> Cdr<'a, T>
 where
     T: Copy,
 {
+    /// Constructs a list from a slice, allocating one cons for each value.
+    ///
+    /// #Arguments
+    /// *  `values` - The values to construct the list from.
+    /// *  `allocator` - The allocator to use for allocating the conses.
+    pub fn from_slice<A>(values: &[T], allocator: &A) -> Result<Self, crate::alloc::Error>
+    where
+        A: crate::alloc::Allocator<'a, Item = Cons<'a, T>>,
+    {
+        values.iter().rev().try_fold(Self::Empty, |cdr, value| {
+            allocator.alloc(Cons { car: *value, cdr }).map(Self::Cons)
+        })
+    }
+
     /// The next cons, if any.
     pub fn next(&self) -> Option<&'a Cons<'a, T>> {
         match self {
@@ -123,15 +137,6 @@ where
     }
 }
 
-impl<'a, T> Display for Cons<'a, T>
-where
-    T: Copy + Display,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        crate::common::write_list(self.iter(), f)
-    }
-}
-
 struct ConsIter<'a, T>(Option<&'a Cons<'a, T>>)
 where
     T: Copy;
@@ -216,6 +221,35 @@ mod tests {
 
         // Act
         let actual = tested.iter().cloned().collect::<Vec<_>>();
+
+        // Assert
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn cdr_from_slice_empty() {
+        // Arrange
+        let allocator = crate::alloc::bounded::Allocator::<0, Cons<i32>>::default();
+
+        // Act
+        let actual = Cdr::from_slice(&[], &allocator);
+
+        // Assert
+        assert_eq!(actual, Ok(Cdr::Empty));
+    }
+
+    #[test]
+    fn cdr_from_slice() {
+        // Arrange
+        let expected = vec![1, 5, 14];
+        let allocator = crate::alloc::bounded::Allocator::<3, Cons<i32>>::default();
+
+        // Act
+        let actual = Cdr::from_slice(&expected, &allocator)
+            .unwrap()
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
 
         // Assert
         assert_eq!(actual, expected);
