@@ -323,7 +323,17 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(length '(1 2 3))" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(length (list 1 2 3))" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(length '(1 2 3))" => Commands),
 ///     3.0.into(),
 /// );
 ///
@@ -334,6 +344,11 @@ macro_rules! tag {
 ///
 /// assert_eq!(
 ///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3))" => Commands),
+///     6.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 '(1 2 3))" => Commands),
 ///     6.0.into(),
 /// );
 ///
@@ -1236,10 +1251,10 @@ macro_rules! commands {
                 /// (length (list)) ; 0
                 /// ```
                 "length" => Length(_ctx, value: Value) {
-                    match value {
-                        Value::List(cons) => Ok((cons.iter().count() as f32).into()),
-                        Value::Void => Ok(0.0f32.into()),
-                        _ => $crate::fail!("expected a list"),
+                    if let Some(iter) =  value.iter() {
+                        Ok((iter.count() as f32).into())
+                    } else {
+                         $crate::fail!("expected a list")
                     }
                 }
 
@@ -1250,15 +1265,13 @@ macro_rules! commands {
                 /// (foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3)) ; 6
                 /// ```
                 "foldl" => Foldl(ctx, lambda: Lambda, init: Value, list: Value) {
-                    match list {
-                        Value::List(cons) => {
-                            cons.iter().try_fold(init, |acc, elem| ctx.invoke(
-                                lambda,
-                                &[acc, *elem],
-                            ))
-                        }
-                        Value::Void => Ok(init),
-                        _ => $crate::fail!("expected a list"),
+                    if let Some(mut iter) = list.iter() {
+                        iter.try_fold(init, |acc, v| ctx.invoke(
+                            lambda,
+                            &[acc, v],
+                        ))
+                    } else {
+                        $crate::fail!("expected a list")
                     }
                 }
 
