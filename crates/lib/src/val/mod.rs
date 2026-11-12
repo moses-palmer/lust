@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    ast::{self, token::tokenizer::Tokenizer},
+    ast::{self, NodeValue, token::tokenizer::Tokenizer},
     common::write_list,
     lambda,
 };
@@ -87,6 +87,78 @@ impl<T> Value<'_, T> {
             String(_) => "string",
             Lambda(_) => "lambda",
             List(_) => "list",
+        }
+    }
+
+    /// Iterates over the values of this value if it is iterable.
+    pub fn iter<'a>(&'a self) -> Option<impl Iterator<Item = Self> + 'a>
+    where
+        T: Tag,
+    {
+        use NodeValue::*;
+        use Value::*;
+        match self {
+            Void => Some(ValueIterator::Void),
+            AST(n) => match &n.value {
+                Tree(vs) => Some(ValueIterator::AST(vs.iter().map(|n| Self::unwrap_ast(n)))),
+                TreeRef(vs) => Some(ValueIterator::ASTRef(
+                    vs.iter().map(|n| Self::unwrap_ast(n)),
+                )),
+                _ => None,
+            },
+            List(v) => Some(ValueIterator::Cons(v.iter().cloned())),
+            _ => None,
+        }
+    }
+
+    /// Simplifies an AST node.
+    ///
+    /// This method will convert numbers and the atoms `true` and `false` to value types, other
+    /// input is converted to AST values.
+    ///
+    /// # Arguments
+    /// *  `ast` - The AST node to unwrap.
+    fn unwrap_ast<'a>(ast: &'a ast::Node) -> Value<'a, T> {
+        match &ast.value {
+            NodeValue::Leaf(a) => match a {
+                ast::Value::Atom { value } if value == Self::TRUE => Value::Boolean(true),
+                ast::Value::Atom { value } if value == Self::FALSE => Value::Boolean(false),
+                ast::Value::Number { value } => Value::Number(*value),
+                _ => Value::AST(ast),
+            },
+            _ => Value::AST(ast),
+        }
+    }
+}
+
+enum ValueIterator<'a, A, B, C, T>
+where
+    A: Iterator<Item = Value<'a, T>>,
+    B: Iterator<Item = Value<'a, T>>,
+    C: Iterator<Item = Value<'a, T>>,
+    T: 'a,
+{
+    Void,
+    AST(A),
+    ASTRef(B),
+    Cons(C),
+}
+
+impl<'a, A, B, C, T> Iterator for ValueIterator<'a, A, B, C, T>
+where
+    A: Iterator<Item = Value<'a, T>>,
+    B: Iterator<Item = Value<'a, T>>,
+    C: Iterator<Item = Value<'a, T>>,
+    T: 'a,
+{
+    type Item = Value<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ValueIterator::Void => None,
+            ValueIterator::AST(iter) => iter.next(),
+            ValueIterator::ASTRef(iter) => iter.next(),
+            ValueIterator::Cons(iter) => iter.next(),
         }
     }
 }
@@ -363,6 +435,7 @@ pub type Values<'a, T> = ::smallvec::SmallVec<[Value<'a, T>; 8]>;
 mod tests {
     use super::Error;
 
+    use crate::ast;
     use crate::test_helpers::*;
 
     #[test]
@@ -374,6 +447,76 @@ mod tests {
         assert_eq!(Value::Boolean(true).type_name(), "bool");
         assert_eq!(Value::Number(1.0).type_name(), "number");
         assert_eq!(Value::String("a".into()).type_name(), "string");
+    }
+
+    #[test]
+    fn iter_uniterable() {
+        // Arrange, act and assert
+        assert!(Value::Tag(Tag::A).iter().is_none());
+        assert!(Value::Atom("a".into()).iter().is_none());
+        assert!(Value::Boolean(true).iter().is_none());
+        assert!(Value::Number(1.0).iter().is_none());
+        assert!(Value::String("a".into()).iter().is_none());
+    }
+
+    #[test]
+    fn iter_void() {
+        // Arrange
+        let tested = Value::Void;
+        let expected = vec![];
+
+        // Act
+        let actual = tested.iter().unwrap().collect::<Vec<_>>();
+
+        // Assert
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn iter_ast_primitives() {
+        // Arrange
+        let ast = parse("'(1 true false)");
+        let tested = Value::AST(&ast);
+        let expected = vec![1.into(), true.into(), false.into()];
+
+        // Act
+        let actual = tested.iter().unwrap().collect::<Vec<_>>();
+
+        // Assert
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn iter_ast_complex() {
+        // Arrange
+        let ast = parse("'(hello world)");
+        let tested = Value::AST(&ast);
+        let expected = match &ast.value {
+            ast::NodeValue::Tree(vs) => vs.iter().map(|n| Value::AST(n)).collect::<Vec<_>>(),
+            _ => panic!("expected tree"),
+        };
+
+        // Act
+        let actual = tested.iter().unwrap().collect::<Vec<_>>();
+
+        // Assert
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn iter_list() {
+        // Arrange
+        let t2 = Cons::single(Value::from(3));
+        let t1 = t2.prepend(Value::from(2));
+        let t0 = t1.prepend(Value::from(1));
+        let tested = Value::List(&t0);
+        let expected = vec![Value::from(1), Value::from(2), Value::from(3)];
+
+        // Act
+        let actual = tested.iter().unwrap().collect::<Vec<_>>();
+
+        // Assert
+        assert_eq!(actual, expected);
     }
 
     #[test]

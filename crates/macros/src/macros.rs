@@ -323,7 +323,17 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(length '(1 2 3))" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(length (list 1 2 3))" => Commands),
+///     3.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(length '(1 2 3))" => Commands),
 ///     3.0.into(),
 /// );
 ///
@@ -338,8 +348,23 @@ macro_rules! tag {
 /// );
 ///
 /// assert_eq!(
+///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 '(1 2 3))" => Commands),
+///     6.0.into(),
+/// );
+///
+/// assert_eq!(
 ///     eval!("(foldl (lambda (acc x) (+ acc x)) 0 (list))" => Commands),
 ///     0.0.into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(map (lambda (x) (+ x 1)) '(1 2 3))" => Commands),
+///     vec![2.into(), 3.into(), 4.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(map (lambda (x) (+ x 1)) (list))" => Commands),
+///     ().into(),
 /// );
 ///
 /// # Ok(())
@@ -1236,10 +1261,10 @@ macro_rules! commands {
                 /// (length (list)) ; 0
                 /// ```
                 "length" => Length(_ctx, value: Value) {
-                    match value {
-                        Value::List(cons) => Ok((cons.iter().count() as f32).into()),
-                        Value::Void => Ok(0.0f32.into()),
-                        _ => $crate::fail!("expected a list"),
+                    if let Some(iter) =  value.iter() {
+                        Ok((iter.count() as f32).into())
+                    } else {
+                         $crate::fail!("expected a list")
                     }
                 }
 
@@ -1250,16 +1275,38 @@ macro_rules! commands {
                 /// (foldl (lambda (acc x) (+ acc x)) 0 (list 1 2 3)) ; 6
                 /// ```
                 "foldl" => Foldl(ctx, lambda: Lambda, init: Value, list: Value) {
-                    match list {
-                        Value::List(cons) => {
-                            cons.iter().try_fold(init, |acc, elem| ctx.invoke(
-                                lambda,
-                                &[acc, *elem],
-                            ))
-                        }
-                        Value::Void => Ok(init),
-                        _ => $crate::fail!("expected a list"),
+                    if let Some(mut iter) = list.iter() {
+                        iter.try_fold(init, |acc, v| ctx.invoke(
+                            lambda,
+                            &[acc, v],
+                        ))
+                    } else {
+                        $crate::fail!("expected a list")
                     }
+                }
+
+                /// Map over a list.
+                ///
+                /// This will construct a temporary list of the results of applying `lambda` to
+                /// each element of `list`.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (map (lambda (x) (+ x 2)) (list 1 2 3)) ; (3 4 5)
+                /// ```
+                "map" => Map(ctx, lambda: Lambda, list: Value) {
+                    Ok($crate::val::cons::Cdr::from_slice(
+                        if let Some(iter) = list.iter() {
+                            iter.map(|v| ctx.invoke(
+                                lambda,
+                                &[v],
+                            ))
+                            .collect::<::std::result::Result<Values, _>>()?
+                        } else {
+                            $crate::fail!("expected a list")
+                        }.as_slice(),
+                        ctx.alloc,
+                    )?.next().map(Into::into).unwrap_or(Value::NIL))
                 }
 
                 $($rest)*
