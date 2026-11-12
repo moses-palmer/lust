@@ -357,6 +357,16 @@ macro_rules! tag {
 ///     0.0.into(),
 /// );
 ///
+/// assert_eq!(
+///     eval!("(map (lambda (x) (+ x 1)) '(1 2 3))" => Commands),
+///     vec![2.into(), 3.into(), 4.into()].into(),
+/// );
+///
+/// assert_eq!(
+///     eval!("(map (lambda (x) (+ x 1)) (list))" => Commands),
+///     ().into(),
+/// );
+///
 /// # Ok(())
 /// # }
 /// ```
@@ -1273,6 +1283,30 @@ macro_rules! commands {
                     } else {
                         $crate::fail!("expected a list")
                     }
+                }
+
+                /// Map over a list.
+                ///
+                /// This will construct a temporary list of the results of applying `lambda` to
+                /// each element of `list`.
+                ///
+                /// # Example
+                /// ```lisp
+                /// (map (lambda (x) (+ x 2)) (list 1 2 3)) ; (3 4 5)
+                /// ```
+                "map" => Map(ctx, lambda: Lambda, list: Value) {
+                    Ok($crate::val::cons::Cdr::from_slice(
+                        if let Some(iter) = list.iter() {
+                            iter.map(|v| ctx.invoke(
+                                lambda,
+                                &[v],
+                            ))
+                            .collect::<::std::result::Result<Values, _>>()?
+                        } else {
+                            $crate::fail!("expected a list")
+                        }.as_slice(),
+                        ctx.alloc,
+                    )?.next().map(Into::into).unwrap_or(Value::NIL))
                 }
 
                 $($rest)*
